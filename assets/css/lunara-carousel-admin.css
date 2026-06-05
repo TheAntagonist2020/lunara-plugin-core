@@ -1,0 +1,5 @@
+#lunara-carousel-sortable { margin-top: 12px; }
+.lunara-carousel-item { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid #ddd; background: #fff; margin: 0 0 10px 0; cursor: move; }
+.lunara-carousel-item img { width: 140px; height: auto; display: block; }
+.lunara-carousel-placeholder { border: 2px dashed #666; height: 80px; margin: 0 0 10px 0; }
+#lunara-carousel-save-status { margin-left: 10px; font-weight: 600; }
