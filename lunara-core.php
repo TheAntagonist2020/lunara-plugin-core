@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.1.0
+ * Version: 0.1.1
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.1.0' );
+define( 'LUNARA_CORE_VERSION', '0.1.1' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -202,7 +202,10 @@ final class Lunara_Core {
         $where          = get_post_meta( $post->ID, '_lunara_where', true );
         $theme_echo     = get_post_meta( $post->ID, '_lunara_theme_echo', true );
         $counter        = get_post_meta( $post->ID, '_lunara_counter_program', true );
-        $craft          = get_post_meta( $post->ID, '_lunara_craft_mirror', true );
+        $craft          = get_post_meta( $post->ID, '_lunara_career_context', true );
+        if ( '' === trim( (string) $craft ) ) {
+            $craft = get_post_meta( $post->ID, '_lunara_craft_mirror', true );
+        }
         ?>
         <style>
             .lunara-meta-field { margin-bottom: 15px; }
@@ -213,6 +216,25 @@ final class Lunara_Core {
             .lunara-meta-section h4 { margin: 0 0 15px; color: #c9a961; }
             .lunara-meta-row { display: flex; gap: 20px; }
             .lunara-meta-row .lunara-meta-field { flex: 1; }
+            .lunara-pair-preview { margin-top: 18px; border: 1px solid #d8c38a; border-radius: 10px; background: #071523; overflow: hidden; color: #f7f1dd; }
+            .lunara-pair-preview-head { display: flex; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid rgba(216, 195, 138, 0.28); background: rgba(216, 195, 138, 0.08); }
+            .lunara-pair-preview-head strong { color: #e4c875; text-transform: uppercase; letter-spacing: .08em; }
+            .lunara-pair-preview-head span { color: #b8c3cf; font-size: 12px; }
+            .lunara-pair-preview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 14px; }
+            .lunara-pair-preview-card { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 12px; min-height: 122px; padding: 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.045); }
+            .lunara-pair-preview-card.is-warning { border-color: rgba(214, 126, 70, .85); }
+            .lunara-pair-preview-card.is-empty { opacity: .72; }
+            .lunara-pair-preview-media { width: 74px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: rgba(255,255,255,.07); display: flex; align-items: center; justify-content: center; color: #8f9aa7; font-size: 11px; text-align: center; }
+            .lunara-pair-preview-thumb { display: block; width: 100%; height: 100%; object-fit: cover; }
+            .lunara-pair-preview-role { margin: 0 0 4px; color: #e4c875; font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+            .lunara-pair-preview-title { margin: 0 0 5px; color: #fff; font-size: 14px; line-height: 1.25; }
+            .lunara-pair-preview-note { margin: 0 0 8px; color: #c8d0d8; font-size: 12px; line-height: 1.35; }
+            .lunara-pair-preview-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+            .lunara-pair-preview-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border: 1px solid rgba(228, 200, 117, .42); border-radius: 999px; color: #f2d986; font-size: 11px; line-height: 1.2; text-decoration: none; }
+            .lunara-pair-preview-chip.is-muted { border-color: rgba(255,255,255,.18); color: #aeb8c4; }
+            .lunara-pair-preview-warnings { margin: 8px 0 0; padding-left: 16px; color: #ffb07b; font-size: 12px; }
+            .lunara-pair-preview-warnings li { margin: 0 0 4px; }
+            @media (max-width: 1100px) { .lunara-pair-preview-grid { grid-template-columns: 1fr; } }
         </style>
 
         <div class="lunara-meta-row">
@@ -263,10 +285,23 @@ final class Lunara_Core {
             </div>
 
             <div class="lunara-meta-field">
-                <label for="lunara_craft_mirror"><?php esc_html_e( 'Career Context (Optional)', 'lunara-core' ); ?></label>
-                <input type="text" id="lunara_craft_mirror" name="lunara_craft_mirror" value="<?php echo esc_attr( $craft ); ?>" placeholder="Film with similar technical approach">
+                <label for="lunara_career_context"><?php esc_html_e( 'Career Context (Optional)', 'lunara-core' ); ?></label>
+                <input type="text" id="lunara_career_context" name="lunara_career_context" value="<?php echo esc_attr( $craft ); ?>" placeholder="Film that clarifies this artist's career or creative trajectory">
                 <p class="description"><?php esc_html_e( 'Optionally append a tt-id or IMDb URL for direct links.', 'lunara-core' ); ?></p>
             </div>
+
+            <?php
+            if ( function_exists( 'lunara_render_pair_it_with_admin_preview' ) ) {
+                echo lunara_render_pair_it_with_admin_preview(
+                    $post->ID,
+                    array(
+                        __( 'Theme Echo', 'lunara-core' )      => $theme_echo,
+                        __( 'Counter-Program', 'lunara-core' ) => $counter,
+                        __( 'Career Context', 'lunara-core' )  => $craft,
+                    )
+                );
+            }
+            ?>
         </div>
         <?php
     }
@@ -293,10 +328,18 @@ final class Lunara_Core {
             return;
         }
 
-        foreach ( array( 'lunara_score', 'lunara_year', 'lunara_imdb_title_id', 'lunara_where', 'lunara_theme_echo', 'lunara_counter_program', 'lunara_craft_mirror' ) as $field ) {
+        foreach ( array( 'lunara_score', 'lunara_year', 'lunara_imdb_title_id', 'lunara_where', 'lunara_theme_echo', 'lunara_counter_program' ) as $field ) {
             if ( isset( $_POST[ $field ] ) ) {
                 update_post_meta( $post_id, '_' . $field, sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) );
             }
+        }
+
+        if ( isset( $_POST['lunara_career_context'] ) ) {
+            $career_context = sanitize_text_field( wp_unslash( $_POST['lunara_career_context'] ) );
+            update_post_meta( $post_id, '_lunara_career_context', $career_context );
+            delete_post_meta( $post_id, '_lunara_craft_mirror' );
+        } elseif ( isset( $_POST['lunara_craft_mirror'] ) ) {
+            update_post_meta( $post_id, '_lunara_craft_mirror', sanitize_text_field( wp_unslash( $_POST['lunara_craft_mirror'] ) ) );
         }
     }
 
