@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.1.1
+ * Version: 0.1.2
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.1.1' );
+define( 'LUNARA_CORE_VERSION', '0.1.2' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -200,9 +200,11 @@ final class Lunara_Core {
         $year           = get_post_meta( $post->ID, '_lunara_year', true );
         $imdb_review_id = get_post_meta( $post->ID, '_lunara_imdb_title_id', true );
         $where          = get_post_meta( $post->ID, '_lunara_where', true );
-        $theme_echo     = get_post_meta( $post->ID, '_lunara_theme_echo', true );
-        $counter        = get_post_meta( $post->ID, '_lunara_counter_program', true );
-        $craft          = get_post_meta( $post->ID, '_lunara_career_context', true );
+        $theme_echo            = get_post_meta( $post->ID, '_lunara_theme_echo', true );
+        $counter               = get_post_meta( $post->ID, '_lunara_counter_program', true );
+        $craft                 = get_post_meta( $post->ID, '_lunara_career_context', true );
+        $spoiler_review_url    = get_post_meta( $post->ID, '_lunara_spoiler_review_url', true );
+        $spoiler_review_label  = get_post_meta( $post->ID, '_lunara_spoiler_review_label', true );
         if ( '' === trim( (string) $craft ) ) {
             $craft = get_post_meta( $post->ID, '_lunara_craft_mirror', true );
         }
@@ -210,7 +212,7 @@ final class Lunara_Core {
         <style>
             .lunara-meta-field { margin-bottom: 15px; }
             .lunara-meta-field label { display: block; font-weight: 600; margin-bottom: 5px; }
-            .lunara-meta-field input, .lunara-meta-field select { width: 100%; }
+            .lunara-meta-field input, .lunara-meta-field select, .lunara-meta-field textarea { width: 100%; }
             .lunara-meta-field .description { font-style: italic; color: #666; font-size: 12px; margin-top: 4px; }
             .lunara-meta-section { margin-top: 20px; padding-top: 15px; border-top: 1px solid #ddd; }
             .lunara-meta-section h4 { margin: 0 0 15px; color: #c9a961; }
@@ -303,6 +305,22 @@ final class Lunara_Core {
             }
             ?>
         </div>
+
+        <div class="lunara-meta-section">
+            <h4><?php esc_html_e( 'SPOILER REVIEW BRIDGE', 'lunara-core' ); ?></h4>
+
+            <div class="lunara-meta-field">
+                <label for="lunara_spoiler_review_url"><?php esc_html_e( 'Full Spoiler Review URL', 'lunara-core' ); ?></label>
+                <input type="url" id="lunara_spoiler_review_url" name="lunara_spoiler_review_url" value="<?php echo esc_url( $spoiler_review_url ); ?>" placeholder="<?php echo esc_attr( home_url( '/reviews/example-spoiler-review/' ) ); ?>">
+                <p class="description"><?php esc_html_e( 'Optional. When this spoiler-free review has a full spoiler companion, paste the companion review URL here.', 'lunara-core' ); ?></p>
+            </div>
+
+            <div class="lunara-meta-field">
+                <label for="lunara_spoiler_review_label"><?php esc_html_e( 'Spoiler Link Label', 'lunara-core' ); ?></label>
+                <input type="text" id="lunara_spoiler_review_label" name="lunara_spoiler_review_label" value="<?php echo esc_attr( $spoiler_review_label ); ?>" placeholder="<?php esc_attr_e( 'Read the full spoiler review', 'lunara-core' ); ?>">
+                <p class="description"><?php esc_html_e( 'Leave blank for the default CTA. Manual URL wins; otherwise the theme may auto-detect a spoiler-category Review with the same IMDb ID.', 'lunara-core' ); ?></p>
+            </div>
+        </div>
         <?php
     }
 
@@ -331,6 +349,24 @@ final class Lunara_Core {
         foreach ( array( 'lunara_score', 'lunara_year', 'lunara_imdb_title_id', 'lunara_where', 'lunara_theme_echo', 'lunara_counter_program' ) as $field ) {
             if ( isset( $_POST[ $field ] ) ) {
                 update_post_meta( $post_id, '_' . $field, sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) );
+            }
+        }
+
+        if ( isset( $_POST['lunara_spoiler_review_url'] ) ) {
+            $spoiler_review_url = esc_url_raw( wp_unslash( $_POST['lunara_spoiler_review_url'] ) );
+            if ( '' === trim( (string) $spoiler_review_url ) ) {
+                delete_post_meta( $post_id, '_lunara_spoiler_review_url' );
+            } else {
+                update_post_meta( $post_id, '_lunara_spoiler_review_url', $spoiler_review_url );
+            }
+        }
+
+        if ( isset( $_POST['lunara_spoiler_review_label'] ) ) {
+            $spoiler_review_label = sanitize_text_field( wp_unslash( $_POST['lunara_spoiler_review_label'] ) );
+            if ( '' === trim( (string) $spoiler_review_label ) ) {
+                delete_post_meta( $post_id, '_lunara_spoiler_review_label' );
+            } else {
+                update_post_meta( $post_id, '_lunara_spoiler_review_label', $spoiler_review_label );
             }
         }
 
