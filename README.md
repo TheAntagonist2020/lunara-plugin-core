@@ -8,6 +8,12 @@ This plugin is load-bearing for the live site. It registers and maintains core r
 
 Do not deactivate it on the live site without first auditing theme/plugin dependencies and confirming graceful fallback behavior.
 
+## Review Editorial Fields
+
+- `Review Spoiler Mode` marks a Review as either spoiler-free or a full-spoiler companion.
+- `Full Spoiler Review URL` and `Spoiler Link Label` bridge spoiler-free reviews to companion pieces when manual linking is preferred.
+- `IMDb Title ID` lets the active theme auto-pair published full-spoiler companions with spoiler-free reviews that share the same film identity.
+
 ## Source Locations
 
 - Local source: `G:\lunara-backups\work\lunara-core`

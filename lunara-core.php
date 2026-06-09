@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.1.2
+ * Version: 0.1.3
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.1.2' );
+define( 'LUNARA_CORE_VERSION', '0.1.3' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -205,8 +205,12 @@ final class Lunara_Core {
         $craft                 = get_post_meta( $post->ID, '_lunara_career_context', true );
         $spoiler_review_url    = get_post_meta( $post->ID, '_lunara_spoiler_review_url', true );
         $spoiler_review_label  = get_post_meta( $post->ID, '_lunara_spoiler_review_label', true );
+        $spoiler_review_mode   = get_post_meta( $post->ID, '_lunara_review_spoiler_mode', true );
         if ( '' === trim( (string) $craft ) ) {
             $craft = get_post_meta( $post->ID, '_lunara_craft_mirror', true );
+        }
+        if ( ! in_array( $spoiler_review_mode, array( 'spoiler_free', 'full_spoiler' ), true ) ) {
+            $spoiler_review_mode = 'spoiler_free';
         }
         ?>
         <style>
@@ -310,6 +314,15 @@ final class Lunara_Core {
             <h4><?php esc_html_e( 'SPOILER REVIEW BRIDGE', 'lunara-core' ); ?></h4>
 
             <div class="lunara-meta-field">
+                <label for="lunara_review_spoiler_mode"><?php esc_html_e( 'Review Spoiler Mode', 'lunara-core' ); ?></label>
+                <select id="lunara_review_spoiler_mode" name="lunara_review_spoiler_mode">
+                    <option value="spoiler_free" <?php selected( $spoiler_review_mode, 'spoiler_free' ); ?>><?php esc_html_e( 'Spoiler-free review', 'lunara-core' ); ?></option>
+                    <option value="full_spoiler" <?php selected( $spoiler_review_mode, 'full_spoiler' ); ?>><?php esc_html_e( 'Full spoiler review', 'lunara-core' ); ?></option>
+                </select>
+                <p class="description"><?php esc_html_e( 'Use Full spoiler review for companion pieces that openly discuss endings, reveals, deaths, twists, and final images.', 'lunara-core' ); ?></p>
+            </div>
+
+            <div class="lunara-meta-field">
                 <label for="lunara_spoiler_review_url"><?php esc_html_e( 'Full Spoiler Review URL', 'lunara-core' ); ?></label>
                 <input type="url" id="lunara_spoiler_review_url" name="lunara_spoiler_review_url" value="<?php echo esc_url( $spoiler_review_url ); ?>" placeholder="<?php echo esc_attr( home_url( '/reviews/example-spoiler-review/' ) ); ?>">
                 <p class="description"><?php esc_html_e( 'Optional. When this spoiler-free review has a full spoiler companion, paste the companion review URL here.', 'lunara-core' ); ?></p>
@@ -349,6 +362,15 @@ final class Lunara_Core {
         foreach ( array( 'lunara_score', 'lunara_year', 'lunara_imdb_title_id', 'lunara_where', 'lunara_theme_echo', 'lunara_counter_program' ) as $field ) {
             if ( isset( $_POST[ $field ] ) ) {
                 update_post_meta( $post_id, '_' . $field, sanitize_text_field( wp_unslash( $_POST[ $field ] ) ) );
+            }
+        }
+
+        if ( isset( $_POST['lunara_review_spoiler_mode'] ) ) {
+            $spoiler_review_mode = sanitize_key( wp_unslash( $_POST['lunara_review_spoiler_mode'] ) );
+            if ( 'full_spoiler' === $spoiler_review_mode ) {
+                update_post_meta( $post_id, '_lunara_review_spoiler_mode', 'full_spoiler' );
+            } else {
+                delete_post_meta( $post_id, '_lunara_review_spoiler_mode' );
             }
         }
 
