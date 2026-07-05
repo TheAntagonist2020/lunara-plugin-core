@@ -50,11 +50,11 @@ final class Lunara_Entities {
             'movie',
             array(
                 'labels' => array(
-                    'name'          => __( 'Movies', 'lunara-core' ),
-                    'singular_name' => __( 'Movie', 'lunara-core' ),
-                    'add_new_item'  => __( 'Add New Movie', 'lunara-core' ),
-                    'edit_item'     => __( 'Edit Movie', 'lunara-core' ),
-                    'menu_name'     => __( 'Movies', 'lunara-core' ),
+                    'name'          => __( 'Film Dossiers', 'lunara-core' ),
+                    'singular_name' => __( 'Film Dossier', 'lunara-core' ),
+                    'add_new_item'  => __( 'Add New Film Dossier', 'lunara-core' ),
+                    'edit_item'     => __( 'Edit Film Dossier', 'lunara-core' ),
+                    'menu_name'     => __( 'Film Dossiers', 'lunara-core' ),
                 ),
                 'description'  => __( 'Core film entities: metadata, relationships, and award history.', 'lunara-core' ),
                 'public'       => true,
@@ -71,11 +71,11 @@ final class Lunara_Entities {
             'person',
             array(
                 'labels' => array(
-                    'name'          => __( 'People', 'lunara-core' ),
-                    'singular_name' => __( 'Person', 'lunara-core' ),
-                    'add_new_item'  => __( 'Add New Person', 'lunara-core' ),
-                    'edit_item'     => __( 'Edit Person', 'lunara-core' ),
-                    'menu_name'     => __( 'People', 'lunara-core' ),
+                    'name'          => __( 'Talent', 'lunara-core' ),
+                    'singular_name' => __( 'Talent Profile', 'lunara-core' ),
+                    'add_new_item'  => __( 'Add New Talent Profile', 'lunara-core' ),
+                    'edit_item'     => __( 'Edit Talent Profile', 'lunara-core' ),
+                    'menu_name'     => __( 'Talent', 'lunara-core' ),
                 ),
                 'description'  => __( 'Talent entities: directors, actors, and craftspeople.', 'lunara-core' ),
                 'public'       => true,
