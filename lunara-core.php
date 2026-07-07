@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.4.1
+ * Version: 0.5.0
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -61,6 +61,11 @@ final class Lunara_Core {
         // lives in the child theme (inc/essay-builder.php).
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-essays.php';
         Lunara_Essays::init();
+
+        // Graph growth: a review published with an unknown IMDb id spawns
+        // its movie entity as a draft — the graph is self-expanding.
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-graph-growth.php';
+        Lunara_Graph_Growth::init();
 
         add_action( 'add_meta_boxes', array( $this, 'add_debrief_meta_box' ) );
         add_action( 'add_meta_boxes', array( $this, 'add_review_details_meta_box' ) );
