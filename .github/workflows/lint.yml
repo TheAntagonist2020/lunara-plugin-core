@@ -1,0 +1,45 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: PHP syntax
+        run: |
+          set -e
+          find . -name '*.php' -not -path './vendor/*' -not -path './node_modules/*' -print0 \
+            | xargs -0 -n1 php -l > /dev/null
+          echo "PHP clean"
+
+      - name: JS syntax
+        run: |
+          set -e
+          find . -name '*.js' -not -path './node_modules/*' -not -path './vendor/*' -print0 \
+            | while IFS= read -r -d '' f; do node --check "$f"; done
+          echo "JS clean"
+
+      - name: CSS brace balance
+        run: |
+          python3 - <<'PYEOF'
+          import glob, sys
+          bad = []
+          for f in glob.glob('**/*.css', recursive=True):
+              s = open(f, encoding='utf-8', errors='ignore').read()
+              if s.count('{') != s.count('}'):
+                  bad.append(f)
+          if bad:
+              print('Unbalanced braces:', bad)
+              sys.exit(1)
+          print('CSS balanced')
+          PYEOF
