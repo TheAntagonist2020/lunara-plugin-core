@@ -187,6 +187,13 @@ class Lunara_Essays {
 							'value'    => 'post',
 						),
 					),
+					array(
+						array(
+							'param'    => 'post_type',
+							'operator' => '==',
+							'value'    => 'review',
+						),
+					),
 				),
 				'position' => 'normal',
 			)
