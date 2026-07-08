@@ -59,12 +59,20 @@ final class Lunara_Guardian {
 	}
 
 	/**
-	 * Every WordPress core default theme is named "twenty…". A fallback to
-	 * one of these — while a Lunara theme is blessed — is the signature of
-	 * an involuntary theme loss, never a deliberate design choice here.
+	 * The takeover signatures Guardian reverses while a Lunara theme is
+	 * blessed: WordPress core defaults ("twenty…") — the classic missing-
+	 * theme fallback — and Blocksy itself, which this site exited for good
+	 * in 3.1.77. Post-exit, Blocksy ACTIVE is a regression (an accidental
+	 * activation replaces the whole site with the raw parent), never a
+	 * design choice; a truly deliberate return goes through the
+	 * lunara_guardian_enabled filter or LUNARA_GUARDIAN_DISABLE first.
 	 */
-	private static function is_default_fallback( $stylesheet ) {
-		return ( 0 === strpos( (string) $stylesheet, 'twenty' ) );
+	private static function is_unblessed_takeover( $stylesheet ) {
+		$stylesheet = (string) $stylesheet;
+		if ( 0 === strpos( $stylesheet, 'twenty' ) ) {
+			return true;
+		}
+		return ( 'blocksy' === $stylesheet || 0 === strpos( $stylesheet, 'blocksy-' ) );
 	}
 
 	/**
@@ -94,8 +102,8 @@ final class Lunara_Guardian {
 		}
 
 		$current = get_stylesheet();
-		if ( ! self::is_default_fallback( $current ) ) {
-			return; // Not a default fallback — leave deliberate choices alone.
+		if ( ! self::is_unblessed_takeover( $current ) ) {
+			return; // Any other theme is a deliberate choice — leave it alone.
 		}
 
 		$blessed = (string) get_option( self::BLESSED_OPTION, '' );
