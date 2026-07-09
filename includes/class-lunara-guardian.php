@@ -13,16 +13,16 @@
  *   1. Blesses the Lunara theme as the canonical active theme whenever
  *      one is legitimately in use.
  *   2. If WordPress ever falls back to a core default theme (any
- *      "twenty*" theme) while a valid blessed Lunara theme still exists,
- *      it switches back automatically on the very next request — no human
- *      needed — and records the event.
+ *      "twenty*" theme), or activates the Blocksy parent instead of the
+ *      blessed Lunara child theme, it switches back automatically on the
+ *      very next request — no human needed — and records the event.
  *   3. Surfaces a dismissible admin notice so the editor knows a heal
  *      happened, when, and from what.
  *
- * It deliberately does NOT touch deliberate switches to any non-default
- * theme, so trying out a real third-party theme is always respected. Set
- * the constant LUNARA_GUARDIAN_DISABLE or filter lunara_guardian_enabled
- * to false to stand it down.
+ * It deliberately does NOT touch switches to any other non-default
+ * stylesheet, so trying out a real third-party theme is respected. The
+ * Blocksy-parent exception above can be disabled with the constant
+ * LUNARA_GUARDIAN_DISABLE or the lunara_guardian_enabled filter.
  *
  * @package Lunara_Core
  */
@@ -61,11 +61,12 @@ final class Lunara_Guardian {
 	/**
 	 * The takeover signatures Guardian reverses while a Lunara theme is
 	 * blessed: WordPress core defaults ("twenty…") — the classic missing-
-	 * theme fallback — and Blocksy itself, which this site exited for good
-	 * in 3.1.77. Post-exit, Blocksy ACTIVE is a regression (an accidental
-	 * activation replaces the whole site with the raw parent), never a
-	 * design choice; a truly deliberate return goes through the
-	 * lunara_guardian_enabled filter or LUNARA_GUARDIAN_DISABLE first.
+	 * theme fallback — and the Blocksy parent stylesheet itself. Lunara is a
+	 * Blocksy child theme, so Blocksy remains its required template; a
+	 * stylesheet value of "blocksy" means the parent was activated directly
+	 * and replaced the child presentation. A truly deliberate parent-theme
+	 * activation goes through the lunara_guardian_enabled filter or
+	 * LUNARA_GUARDIAN_DISABLE first.
 	 */
 	private static function is_unblessed_takeover( $stylesheet ) {
 		$stylesheet = (string) $stylesheet;

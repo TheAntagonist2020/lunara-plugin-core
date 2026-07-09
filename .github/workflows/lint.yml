@@ -15,6 +15,9 @@ jobs:
         with:
           php-version: '8.2'
 
+      - name: Core lifecycle contracts
+        run: php tests/core-lifecycle-regression.php
+
       - name: PHP syntax
         run: |
           set -e

@@ -20,6 +20,7 @@ jQuery(function($){
     $.post(LUNARA_CAROUSEL_ADMIN.ajaxUrl, {
       action: 'lunara_save_carousel_order',
       nonce: LUNARA_CAROUSEL_ADMIN.nonce,
+      slide_set: $list.data('slide-set'),
       order: order
     })
     .done(function(resp){
