@@ -95,7 +95,18 @@ final class Lunara_Core {
         self::register_reviews_cpt();
         self::register_review_taxonomies();
         self::register_slide_set_taxonomy();
+
+        $entity_graph_enabled = (bool) apply_filters( 'lunara_enable_entity_graph', true );
+        if ( $entity_graph_enabled ) {
+            Lunara_Entities::register_post_types();
+            Lunara_Entities::register_taxonomies();
+        }
+
         flush_rewrite_rules();
+
+        if ( $entity_graph_enabled ) {
+            update_option( 'lunara_core_rewrite_version', LUNARA_CORE_VERSION );
+        }
     }
 
     /**
@@ -503,13 +514,8 @@ final class Lunara_Core {
         $director = trim( (string) get_post_meta( $post_id, '_lunara_director', true ) );
         $year     = trim( (string) get_post_meta( $post_id, '_lunara_year', true ) );
 
-        if ( '' !== $director ) {
-            wp_set_object_terms( $post_id, array( $director ), 'lunara_director', false );
-        }
-
-        if ( '' !== $year ) {
-            wp_set_object_terms( $post_id, array( $year ), 'lunara_review_year', false );
-        }
+        wp_set_object_terms( $post_id, '' !== $director ? array( $director ) : array(), 'lunara_director', false );
+        wp_set_object_terms( $post_id, '' !== $year ? array( $year ) : array(), 'lunara_review_year', false );
     }
 
     /**
@@ -700,20 +706,47 @@ final class Lunara_Core {
 
         check_ajax_referer( 'lunara_carousel_admin', 'nonce' );
 
-        $order = isset( $_POST['order'] ) ? (array) $_POST['order'] : array();
-        $order = array_values( array_filter( array_map( 'intval', $order ) ) );
+        $slide_set = isset( $_POST['slide_set'] ) ? sanitize_title( wp_unslash( $_POST['slide_set'] ) ) : '';
+        $term      = '' !== $slide_set ? get_term_by( 'slug', $slide_set, 'lunara_slide_set' ) : false;
+
+        if ( ! ( $term instanceof WP_Term ) ) {
+            wp_send_json_error( array( 'message' => __( 'Invalid slide set.', 'lunara-core' ) ) );
+        }
+
+        $order = isset( $_POST['order'] ) ? (array) wp_unslash( $_POST['order'] ) : array();
+        $order = array_values(
+            array_unique(
+                array_filter( array_map( 'absint', $order ) )
+            )
+        );
 
         if ( empty( $order ) ) {
             wp_send_json_error( array( 'message' => __( 'No order received.', 'lunara-core' ) ) );
         }
 
+        foreach ( $order as $id ) {
+            $attachment = get_post( $id );
+            if (
+                ! ( $attachment instanceof WP_Post )
+                || 'attachment' !== $attachment->post_type
+                || ! has_term( $term->term_id, 'lunara_slide_set', $id )
+            ) {
+                wp_send_json_error( array( 'message' => __( 'The order contains a slide outside this set.', 'lunara-core' ) ) );
+            }
+        }
+
         foreach ( $order as $menu_order => $id ) {
-            wp_update_post(
+            $updated = wp_update_post(
                 array(
                     'ID'         => $id,
                     'menu_order' => $menu_order,
-                )
+                ),
+                true
             );
+
+            if ( is_wp_error( $updated ) ) {
+                wp_send_json_error( array( 'message' => __( 'A slide could not be reordered.', 'lunara-core' ) ) );
+            }
         }
 
         wp_send_json_success(

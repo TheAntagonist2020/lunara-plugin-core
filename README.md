@@ -22,6 +22,7 @@ Do not deactivate it on the live site without first auditing theme/plugin depend
 
 ## Verification
 
+- Run `php tests/core-lifecycle-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.
