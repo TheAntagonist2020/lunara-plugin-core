@@ -33,6 +33,22 @@ jobs:
       - name: Debrief Studio contracts
         run: php tests/debrief-studio-regression.php
 
+      - name: Movie identity and schema contracts
+        run: |
+          set -e
+          php tests/graph-growth-identity-regression.php
+          php tests/movie-entity-schema-regression.php
+          php tests/movie-identity-lock-regression.php
+
+      - name: Private Movie importer contracts
+        run: |
+          set -e
+          php tests/movie-import-contract-regression.php
+          php tests/movie-importer-provider-regression.php
+          php tests/movie-importer-security-regression.php
+          php tests/movie-importer-regression.php
+          php tests/movie-import-admin-regression.php
+
       - name: PHP syntax
         run: |
           set -e

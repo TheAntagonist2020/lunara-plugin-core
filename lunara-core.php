@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.6.4
+ * Version: 0.7.0
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.6.4' );
+define( 'LUNARA_CORE_VERSION', '0.7.0' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -61,6 +61,15 @@ final class Lunara_Core {
         add_action( 'init', array( __CLASS__, 'register_review_taxonomies' ), 20 );
         add_action( 'init', array( __CLASS__, 'register_slide_set_taxonomy' ), 20 );
 
+        // The Movie importer is an operator surface. Public HTML and unrelated
+        // REST requests keep it unloaded; only its exact private REST prefix
+        // is bootstrapped before WordPress dispatches the request.
+        add_action( 'parse_request', array( __CLASS__, 'maybe_bootstrap_movie_import_rest' ), 5 );
+        if ( function_exists( 'is_admin' ) && is_admin() ) {
+            self::load_movie_import_admin();
+            Lunara_Movie_Import_Admin::init();
+        }
+
         // Entity graph (Design Spec 2.0 §4): movie / person / ledger_entry
         // content models + ACF schema. Phase 1 registers models only — no
         // front-end output until the graph is populated.
@@ -102,6 +111,61 @@ final class Lunara_Core {
         add_action( 'admin_menu', array( $this, 'register_carousel_manager_page' ) );
         add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_carousel_admin_assets' ) );
         add_action( 'wp_ajax_lunara_save_carousel_order', array( $this, 'ajax_save_carousel_order' ) );
+    }
+
+    /**
+     * Load only the private editor shell for normal wp-admin requests.
+     */
+    public static function load_movie_import_admin() {
+        if ( class_exists( 'Lunara_Movie_Import_Admin', false ) ) {
+            return;
+        }
+
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-import-admin.php';
+    }
+
+    /**
+     * Load private Movie importer services in dependency order.
+     */
+    public static function load_movie_importer() {
+        if ( class_exists( 'Lunara_Movie_Importer', false ) ) {
+            return;
+        }
+
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-identity-lock.php';
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-import-contract.php';
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-repository.php';
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-provider-gateway.php';
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-importer.php';
+        self::load_movie_import_admin();
+    }
+
+    /**
+     * Load and register importer routes only for their exact private prefix.
+     *
+     * WordPress invokes parse_request before rest_api_init, so the route can
+     * be registered normally without adding importer weight to other REST
+     * traffic or exposing the route in the public REST index.
+     *
+     * @param WP $wp Current WordPress environment.
+     */
+    public static function maybe_bootstrap_movie_import_rest( $wp ) {
+        $route = '';
+        if ( is_object( $wp ) && isset( $wp->query_vars['rest_route'] ) ) {
+            $route = (string) $wp->query_vars['rest_route'];
+        } elseif ( isset( $_GET['rest_route'] ) ) {
+            $route = function_exists( 'wp_unslash' )
+                ? (string) wp_unslash( $_GET['rest_route'] )
+                : (string) $_GET['rest_route'];
+        }
+
+        $route = '/' . ltrim( $route, '/' );
+        if ( 0 !== strpos( $route, '/lunara/v1/movie-import/' ) ) {
+            return;
+        }
+
+        self::load_movie_importer();
+        add_action( 'rest_api_init', array( 'Lunara_Movie_Import_Admin', 'register_rest_routes' ), 5 );
     }
 
     /**

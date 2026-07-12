@@ -38,6 +38,35 @@ role. Incomplete work can be saved normally. Changing readiness to `ready` or
 prevents the reviewed film from pairing with itself. The saved preview and
 source-film summary use local WordPress data only.
 
+## Private Movie Importer
+
+Core `0.7.0` adds a private, Review-editor Movie importer beneath each of the
+three Debrief Movie selectors. It checks every local `movie` post status and
+both current and legacy IMDb identity keys before contacting a provider.
+Published and otherwise non-draft local matches stop the remote workflow. One
+existing draft can be explicitly enriched without creating a second Movie.
+
+Remote lookup requires server-side configuration through exact constants or
+environment variables. Credential values must never be stored in WordPress
+options, entered into an editor form, or committed to this repository:
+
+- `LUNARA_OMDB_API_KEY`
+- `LUNARA_TMDB_API_TOKEN`
+
+The lookup step performs zero content writes. An administrator must explicitly
+confirm the candidate before Core creates or fills a draft Film Dossier. The
+repository writes only blank factual fields, preserves curated values and all
+non-draft Movies, rejects duplicate identities, revalidates a versioned plan
+hash under an atomic IMDb identity lock before writing, and reports recoverable
+partial writes without creating a second Movie on retry. It never publishes
+automatically.
+
+This foundation imports identity, title, synopsis/excerpt, release date and
+year, runtime, genres, countries, content rating, original title, and TMDb ID.
+Provider image paths and structured people data are normalized for later
+stages, but `0.7.0` does not download media or create Person relationships.
+Importer code and assets are not loaded during ordinary public requests.
+
 ## Debrief Census
 
 Core `0.6.3` adds an operator-only WP-CLI census and migration dry run. Both
@@ -77,7 +106,8 @@ Counter-Program deliberately return `insufficient_evidence` until controlled
 theme and tone metadata exists. Suggestions never write a film selection or
 author the editor-owned pairing reason.
 
-There is no apply command in this release. None of these services updates
+There is no Debrief reconciliation apply command in this release. None of
+these Debrief CLI services updates
 Review content, ACF fields, legacy metadata, post status, taxonomy terms,
 options, transients, or remote services. They are not loaded during public or
 editor WordPress requests.
@@ -96,6 +126,14 @@ editor WordPress requests.
 - Run `php tests/debrief-reconciliation-regression.php`.
 - Run `php tests/debrief-suggestions-regression.php`.
 - Run `php tests/debrief-studio-regression.php`.
+- Run `php tests/graph-growth-identity-regression.php`.
+- Run `php tests/movie-entity-schema-regression.php`.
+- Run `php tests/movie-identity-lock-regression.php`.
+- Run `php tests/movie-import-contract-regression.php`.
+- Run `php tests/movie-importer-provider-regression.php`.
+- Run `php tests/movie-importer-security-regression.php`.
+- Run `php tests/movie-importer-regression.php`.
+- Run `php tests/movie-import-admin-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.
