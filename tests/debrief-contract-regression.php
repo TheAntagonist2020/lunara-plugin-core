@@ -13,6 +13,11 @@ $GLOBALS['lunara_debrief_test'] = array(
         11 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Theme Film' ),
         12 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Counter Film' ),
         13 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Career Film' ),
+        14 => array( 'post_type' => 'movie', 'post_status' => 'draft', 'title' => 'Draft Source Film' ),
+        15 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => '' ),
+        16 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Missing IMDb Film' ),
+        17 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Missing Permalink Film', 'permalink' => '' ),
+        18 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Fallback IMDb Film' ),
         50 => array( 'post_type' => 'attachment', 'post_status' => 'inherit', 'title' => 'Poster Attachment' ),
         99 => array( 'post_type' => 'review', 'post_status' => 'publish', 'title' => 'Source Film Review' ),
     ),
@@ -21,6 +26,11 @@ $GLOBALS['lunara_debrief_test'] = array(
         11 => array( 'imdb_title_id' => 'tt0000011', 'release_year' => '2020' ),
         12 => array( 'imdb_title_id' => 'tt0000012', 'release_year' => '2015' ),
         13 => array( 'imdb_title_id' => 'tt0000013', 'release_year' => '2010' ),
+        14 => array( 'imdb_title_id' => 'tt0000014', 'release_year' => '2025' ),
+        15 => array( 'imdb_title_id' => 'tt0000015', 'release_year' => '2023' ),
+        16 => array( 'release_year' => '2022' ),
+        17 => array( 'imdb_title_id' => 'tt0000017', 'release_year' => '2021' ),
+        18 => array( '_lunara_entity_id' => 'tt0000018', 'release_year' => '2019' ),
         99 => array(
             '_lunara_imdb_title_id'  => 'tt0000010',
             '_lunara_year'           => '2024',
@@ -55,6 +65,20 @@ function get_the_title( $post_id ) {
 
 function get_post_type( $post_id ) {
     return $GLOBALS['lunara_debrief_test']['posts'][ $post_id ]['post_type'] ?? '';
+}
+
+function get_post_status( $post_id ) {
+    return $GLOBALS['lunara_debrief_test']['posts'][ $post_id ]['post_status'] ?? '';
+}
+
+function get_permalink( $post_id ) {
+    if ( array_key_exists( 'permalink', $GLOBALS['lunara_debrief_test']['posts'][ $post_id ] ?? array() ) ) {
+        return $GLOBALS['lunara_debrief_test']['posts'][ $post_id ]['permalink'];
+    }
+
+    return isset( $GLOBALS['lunara_debrief_test']['posts'][ $post_id ] )
+        ? 'https://example.test/movies/' . absint( $post_id ) . '/'
+        : '';
 }
 
 function get_posts( $args ) {
@@ -171,6 +195,50 @@ $validation = Lunara_Debrief_Contract::validate( $complete_record );
 lunara_debrief_test_assert_true( $validation['valid'], 'A complete ready Debrief must be valid.' );
 lunara_debrief_test_assert_true( $validation['complete'], 'A complete ready Debrief must report complete.' );
 lunara_debrief_test_assert_same( 3, count( $validation['record']['pairings'] ), 'The normalized record must contain exactly three pairings.' );
+
+$public_source = Lunara_Debrief_Contract::public_movie_reference( 10, 99 );
+lunara_debrief_test_assert_true(
+    Lunara_Debrief_Contract::is_public_film_reference( $public_source ),
+    'A published canonical Movie with title, IMDb ID, and permalink must be publicly renderable.'
+);
+lunara_debrief_test_assert_same( 'https://example.test/movies/10/', $public_source['permalink'], 'Public references must carry their local permalink.' );
+
+$fallback_imdb = Lunara_Debrief_Contract::public_movie_reference_by_imdb( 'tt0000018' );
+lunara_debrief_test_assert_same( 18, $fallback_imdb['movie_id'], 'Published IMDb lookup must honor the _lunara_entity_id fallback.' );
+lunara_debrief_test_assert_same( 'tt0000018', $fallback_imdb['imdb_title_id'], 'Fallback entity IDs must normalize into the public reference.' );
+
+$draft_lookup = Lunara_Debrief_Contract::public_movie_reference_by_imdb( 'tt0000014' );
+lunara_debrief_test_assert_same( 0, $draft_lookup['movie_id'], 'Published IMDb lookup must never return a draft Movie.' );
+
+$draft_source_record = $complete_record;
+$draft_source_record['reviewed_film'] = Lunara_Debrief_Contract::movie_reference( 14, 99 );
+$draft_source_result = Lunara_Debrief_Contract::validate( $draft_source_record );
+lunara_debrief_test_assert_true( ! $draft_source_result['valid'], 'A draft source Movie cannot make a Debrief ready.' );
+lunara_debrief_test_assert_true(
+    in_array( 'unrenderable_reviewed_film', lunara_debrief_test_issue_codes( $draft_source_result['errors'] ), true ),
+    'Draft source validation must expose the shared public-renderability issue.'
+);
+
+foreach ( array( 15, 16, 17 ) as $unrenderable_movie_id ) {
+    $unrenderable_record = $complete_record;
+    $unrenderable_record['pairings'][0]['film'] = Lunara_Debrief_Contract::movie_reference( $unrenderable_movie_id );
+    $unrenderable_result = Lunara_Debrief_Contract::validate( $unrenderable_record );
+    lunara_debrief_test_assert_true( ! $unrenderable_result['valid'], 'An incomplete public Movie record cannot make a Debrief ready.' );
+    lunara_debrief_test_assert_true(
+        in_array( 'unrenderable_companion_film', lunara_debrief_test_issue_codes( $unrenderable_result['errors'] ), true ),
+        'Missing title, IMDb ID, or permalink must use the shared companion-renderability issue.'
+    );
+}
+
+$incomplete_unrenderable = $complete_record;
+$incomplete_unrenderable['status'] = 'incomplete';
+$incomplete_unrenderable['pairings'][0]['film'] = Lunara_Debrief_Contract::movie_reference( 15 );
+$incomplete_unrenderable_result = Lunara_Debrief_Contract::validate( $incomplete_unrenderable );
+lunara_debrief_test_assert_true( $incomplete_unrenderable_result['valid'], 'Incomplete Debriefs must remain saveable with unrenderable Movie warnings.' );
+lunara_debrief_test_assert_true(
+    in_array( 'unrenderable_companion_film', lunara_debrief_test_issue_codes( $incomplete_unrenderable_result['warnings'] ), true ),
+    'Incomplete Debriefs must report the shared renderability warning.'
+);
 
 $same_title_record = $complete_record;
 $same_title_record['reviewed_film']['title'] = 'Shared Title';

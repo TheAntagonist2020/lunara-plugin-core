@@ -247,6 +247,7 @@ final class Lunara_Debrief_Contract {
             'imdb_title_id' => '',
             'title'         => '',
             'year'          => '',
+            'permalink'     => '',
         );
     }
 
@@ -285,12 +286,14 @@ final class Lunara_Debrief_Contract {
         $imdb_id   = self::first_value( $reference, array( 'imdb_title_id', 'imdb_id', 'tt' ) );
         $title     = self::first_value( $reference, array( 'title', 'post_title' ) );
         $year      = self::first_value( $reference, array( 'year', 'release_year' ) );
+        $permalink = self::first_value( $reference, array( 'permalink', 'url' ) );
 
         $film['movie_id']      = absint( $movie_id );
         $film['review_id']     = absint( $review_id );
         $film['imdb_title_id'] = self::normalize_imdb_title_id( $imdb_id );
         $film['title']         = trim( (string) $title );
         $film['year']          = self::normalize_year( $year );
+        $film['permalink']     = is_string( $permalink ) ? trim( $permalink ) : '';
 
         return $film;
     }
@@ -464,6 +467,18 @@ final class Lunara_Debrief_Contract {
                 $errors,
                 $warnings
             );
+        } elseif ( ! self::is_public_film_reference( $normalized['reviewed_film'] ) ) {
+            $complete = false;
+            self::push_issue(
+                $strict,
+                self::issue(
+                    'unrenderable_reviewed_film',
+                    'reviewed_film',
+                    __( 'The reviewed film must resolve to a published, publicly renderable Movie record.', 'lunara-core' )
+                ),
+                $errors,
+                $warnings
+            );
         }
 
         $seen_films = array();
@@ -481,6 +496,20 @@ final class Lunara_Debrief_Contract {
                     $warnings
                 );
             } else {
+                if ( ! self::is_public_film_reference( $pairing['film'] ) ) {
+                    $complete = false;
+                    self::push_issue(
+                        $strict,
+                        self::issue(
+                            'unrenderable_companion_film',
+                            $path . '.film',
+                            __( 'Choose a published Movie with a title, IMDb ID, and public permalink.', 'lunara-core' )
+                        ),
+                        $errors,
+                        $warnings
+                    );
+                }
+
                 $duplicate_identities = array_intersect( $identities, array_keys( $seen_films ) );
                 if ( ! empty( $duplicate_identities ) ) {
                     $complete = false;
@@ -542,16 +571,12 @@ final class Lunara_Debrief_Contract {
             return self::normalize_record( array() );
         }
 
-        $reviewed_film = array(
-            'review_id'     => $review_id,
-            'imdb_title_id' => get_post_meta( $review_id, '_lunara_imdb_title_id', true ),
-            'title'         => function_exists( 'get_the_title' ) ? get_the_title( $review_id ) : '',
-            'year'          => get_post_meta( $review_id, '_lunara_year', true ),
-        );
-
-        $movie_id = self::find_movie_id_by_imdb( $reviewed_film['imdb_title_id'] );
-        if ( $movie_id ) {
-            $reviewed_film = self::film_reference_from_movie( $movie_id, $review_id );
+        $review_imdb   = self::normalize_imdb_title_id( get_post_meta( $review_id, '_lunara_imdb_title_id', true ) );
+        $reviewed_film = self::public_movie_reference_by_imdb( $review_imdb, $review_id );
+        if ( ! $reviewed_film['movie_id'] ) {
+            $reviewed_film['review_id']     = $review_id;
+            $reviewed_film['imdb_title_id'] = $review_imdb;
+            $reviewed_film['year']          = self::normalize_year( get_post_meta( $review_id, '_lunara_year', true ) );
         }
 
         $pairings = array();
@@ -642,6 +667,59 @@ final class Lunara_Debrief_Contract {
      */
     public static function movie_reference( $movie_id, $review_id = 0 ) {
         return self::film_reference_from_movie( $movie_id, $review_id );
+    }
+
+    /**
+     * Whether a film reference can be rendered on a public Debrief.
+     *
+     * The Movie post is always re-read locally so callers cannot make a draft,
+     * stale snapshot, or incomplete entity appear public by supplying fields.
+     *
+     * @param mixed $reference Movie ID or film reference.
+     * @return bool
+     */
+    public static function is_public_film_reference( $reference ) {
+        $film     = self::normalize_film_reference( $reference );
+        $movie_id = absint( $film['movie_id'] );
+
+        if ( ! $movie_id
+            || ! function_exists( 'get_post_type' )
+            || ! function_exists( 'get_post_status' )
+            || 'movie' !== get_post_type( $movie_id )
+            || 'publish' !== get_post_status( $movie_id )
+        ) {
+            return false;
+        }
+
+        $canonical = self::film_reference_from_movie( $movie_id, $film['review_id'] );
+
+        return '' !== $canonical['title']
+            && '' !== $canonical['imdb_title_id']
+            && '' !== $canonical['permalink'];
+    }
+
+    /**
+     * Read a public-renderable local Movie reference.
+     *
+     * @param int $movie_id Movie post ID.
+     * @param int $review_id Optional owning Review ID.
+     * @return array<string,mixed>
+     */
+    public static function public_movie_reference( $movie_id, $review_id = 0 ) {
+        $film = self::film_reference_from_movie( $movie_id, $review_id );
+        return self::is_public_film_reference( $film ) ? $film : self::empty_film_reference();
+    }
+
+    /**
+     * Resolve a normalized IMDb title ID to a public-renderable local Movie.
+     *
+     * @param mixed $imdb_id Raw IMDb ID.
+     * @param int   $review_id Optional owning Review ID.
+     * @return array<string,mixed>
+     */
+    public static function public_movie_reference_by_imdb( $imdb_id, $review_id = 0 ) {
+        $movie_id = self::find_movie_id_by_imdb( $imdb_id, true );
+        return $movie_id ? self::public_movie_reference( $movie_id, $review_id ) : self::empty_film_reference();
     }
 
     /**
@@ -764,13 +842,21 @@ final class Lunara_Debrief_Contract {
             return self::empty_film_reference();
         }
 
+        $imdb_id = self::normalize_imdb_title_id( get_post_meta( $movie_id, 'imdb_title_id', true ) );
+        if ( '' === $imdb_id ) {
+            $imdb_id = self::normalize_imdb_title_id( get_post_meta( $movie_id, '_lunara_entity_id', true ) );
+        }
+
+        $permalink = function_exists( 'get_permalink' ) ? get_permalink( $movie_id ) : '';
+
         return self::normalize_film_reference(
             array(
                 'movie_id'      => $movie_id,
                 'review_id'     => $review_id,
-                'imdb_title_id' => get_post_meta( $movie_id, 'imdb_title_id', true ),
+                'imdb_title_id' => $imdb_id,
                 'title'         => function_exists( 'get_the_title' ) ? get_the_title( $movie_id ) : '',
                 'year'          => get_post_meta( $movie_id, 'release_year', true ),
+                'permalink'     => is_string( $permalink ) ? $permalink : '',
             )
         );
     }
@@ -779,9 +865,10 @@ final class Lunara_Debrief_Contract {
      * Find a local movie entity by IMDb bridge ID.
      *
      * @param mixed $imdb_id Raw IMDb ID.
+     * @param bool  $published_only Restrict lookup to public Movie posts.
      * @return int
      */
-    private static function find_movie_id_by_imdb( $imdb_id ) {
+    private static function find_movie_id_by_imdb( $imdb_id, $published_only = false ) {
         $imdb_id = self::normalize_imdb_title_id( $imdb_id );
         if ( '' === $imdb_id || ! function_exists( 'get_posts' ) ) {
             return 0;
@@ -790,7 +877,7 @@ final class Lunara_Debrief_Contract {
         $movie_ids = get_posts(
             array(
                 'post_type'              => 'movie',
-                'post_status'            => array( 'publish', 'draft', 'pending', 'private' ),
+                'post_status'            => $published_only ? array( 'publish' ) : array( 'publish', 'draft', 'pending', 'private' ),
                 'posts_per_page'         => 1,
                 'fields'                 => 'ids',
                 'no_found_rows'          => true,
@@ -840,5 +927,17 @@ if ( ! function_exists( 'lunara_debrief_validate_record' ) ) {
 if ( ! function_exists( 'lunara_debrief_get_review_record' ) ) {
     function lunara_debrief_get_review_record( $review_id ) {
         return Lunara_Debrief_Contract::record_from_review( $review_id );
+    }
+}
+
+if ( ! function_exists( 'lunara_debrief_is_public_film_reference' ) ) {
+    function lunara_debrief_is_public_film_reference( $reference ) {
+        return Lunara_Debrief_Contract::is_public_film_reference( $reference );
+    }
+}
+
+if ( ! function_exists( 'lunara_debrief_get_public_movie_reference' ) ) {
+    function lunara_debrief_get_public_movie_reference( $movie_id, $review_id = 0 ) {
+        return Lunara_Debrief_Contract::public_movie_reference( $movie_id, $review_id );
     }
 }

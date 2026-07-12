@@ -79,33 +79,25 @@ final class Lunara_Debrief_Studio {
 
         $acf    = wp_unslash( $_POST['acf'] );
         $status = sanitize_key( $acf[ Lunara_Debrief_Contract::FIELD_STATUS_KEY ] ?? Lunara_Debrief_Contract::STATUS_INCOMPLETE );
-        $stored = Lunara_Debrief_Contract::record_from_review( $post_id );
-        $source = $stored['reviewed_film'];
-
-        if ( isset( $_POST['lunara_imdb_title_id'] ) ) {
-            $submitted_imdb = Lunara_Debrief_Contract::normalize_imdb_title_id( wp_unslash( $_POST['lunara_imdb_title_id'] ) );
-            if ( $submitted_imdb !== $source['imdb_title_id'] ) {
-                $source['movie_id'] = 0;
-            }
+        $submitted_imdb = isset( $_POST['lunara_imdb_title_id'] )
+            ? Lunara_Debrief_Contract::normalize_imdb_title_id( wp_unslash( $_POST['lunara_imdb_title_id'] ) )
+            : '';
+        $source = Lunara_Debrief_Contract::public_movie_reference_by_imdb( $submitted_imdb, $post_id );
+        if ( ! $source['movie_id'] && '' !== $submitted_imdb ) {
             $source['imdb_title_id'] = $submitted_imdb;
         }
 
-        $pairings            = array();
-        $invalid_movie_paths = array();
+        $pairings = array();
         foreach ( Lunara_Debrief_Contract::roles() as $role => $definition ) {
             $movie_id = absint( $acf[ $definition['movie_field_key'] ] ?? 0 );
-            if ( $movie_id && ! self::is_published_movie( $movie_id ) ) {
-                $invalid_movie_paths[ 'pairings.' . $role . '.film' ] = true;
-                acf_add_validation_error(
-                    'acf[' . $definition['movie_field_key'] . ']',
-                    __( 'Choose a published film from the canonical Movie library.', 'lunara-core' )
-                );
-                $movie_id = 0;
+            $film     = $movie_id ? Lunara_Debrief_Contract::movie_reference( $movie_id ) : array();
+            if ( $movie_id && empty( $film['movie_id'] ) ) {
+                $film = array( 'movie_id' => $movie_id );
             }
 
             $pairings[] = array(
                 'role'             => $role,
-                'film'             => $movie_id ? Lunara_Debrief_Contract::movie_reference( $movie_id ) : array(),
+                'film'             => $film,
                 'editorial_reason' => sanitize_textarea_field( $acf[ $definition['reason_field_key'] ] ?? '' ),
             );
         }
@@ -120,30 +112,10 @@ final class Lunara_Debrief_Studio {
         );
 
         foreach ( $result['errors'] as $issue ) {
-            $is_replaced_missing_error = 'missing_companion_film' === ( $issue['code'] ?? '' )
-                && isset( $invalid_movie_paths[ $issue['path'] ?? '' ] );
-            if ( $is_replaced_missing_error ) {
-                continue;
-            }
-
             $field_key = self::field_key_for_issue( $issue );
             $selector  = '' !== $field_key ? 'acf[' . $field_key . ']' : '';
             acf_add_validation_error( $selector, $issue['message'] );
         }
-    }
-
-    /**
-     * Confirm a submitted relationship points to a public canonical film.
-     *
-     * @param int $movie_id Submitted post ID.
-     * @return bool
-     */
-    private static function is_published_movie( $movie_id ) {
-        return $movie_id > 0
-            && function_exists( 'get_post_type' )
-            && function_exists( 'get_post_status' )
-            && 'movie' === get_post_type( $movie_id )
-            && 'publish' === get_post_status( $movie_id );
     }
 
     /**
@@ -166,8 +138,9 @@ final class Lunara_Debrief_Studio {
         $title  = trim( (string) $film['title'] );
         $year   = trim( (string) $film['year'] );
         $imdb   = trim( (string) $film['imdb_title_id'] );
+        $public = Lunara_Debrief_Contract::is_public_film_reference( $film );
 
-        echo '<div class="lunara-debrief-source' . ( $film['movie_id'] ? ' is-linked' : ' is-pending' ) . '">';
+        echo '<div class="lunara-debrief-source' . ( $public ? ' is-linked' : ' is-pending' ) . '">';
         echo '<span class="lunara-debrief-source-mark" aria-hidden="true">D</span>';
         echo '<div class="lunara-debrief-source-copy">';
         echo '<strong>' . esc_html( '' !== $title ? $title : __( 'Canonical film not linked yet', 'lunara-core' ) ) . '</strong>';
@@ -178,7 +151,7 @@ final class Lunara_Debrief_Studio {
         echo esc_html( '' !== $imdb ? $imdb : __( 'Add a valid IMDb title ID in Review metadata', 'lunara-core' ) );
         echo '</span>';
         echo '</div>';
-        if ( $film['movie_id'] && function_exists( 'get_edit_post_link' ) ) {
+        if ( $public && function_exists( 'get_edit_post_link' ) ) {
             $edit_link = get_edit_post_link( $film['movie_id'] );
             if ( $edit_link ) {
                 echo '<a class="button button-secondary" href="' . esc_url( $edit_link ) . '">' . esc_html__( 'Open Film Record', 'lunara-core' ) . '</a>';

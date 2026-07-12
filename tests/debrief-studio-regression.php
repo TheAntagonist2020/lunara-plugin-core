@@ -14,6 +14,9 @@ $GLOBALS['lunara_studio_test'] = array(
         12 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Counter Film' ),
         13 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Career Film' ),
         14 => array( 'post_type' => 'movie', 'post_status' => 'draft', 'title' => 'Draft Film' ),
+        15 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => '' ),
+        16 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Missing IMDb Film' ),
+        17 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Missing Permalink Film', 'permalink' => '' ),
         50 => array( 'post_type' => 'attachment', 'post_status' => 'inherit', 'title' => 'Poster Attachment' ),
         99 => array( 'post_type' => 'review', 'post_status' => 'publish', 'title' => 'Source Review' ),
     ),
@@ -23,6 +26,9 @@ $GLOBALS['lunara_studio_test'] = array(
         12 => array( 'imdb_title_id' => 'tt0000012', 'release_year' => '2015' ),
         13 => array( 'imdb_title_id' => 'tt0000013', 'release_year' => '2010' ),
         14 => array( 'imdb_title_id' => 'tt0000014', 'release_year' => '2025' ),
+        15 => array( 'imdb_title_id' => 'tt0000015', 'release_year' => '2023' ),
+        16 => array( 'release_year' => '2022' ),
+        17 => array( 'imdb_title_id' => 'tt0000017', 'release_year' => '2021' ),
         99 => array( '_lunara_imdb_title_id' => 'tt0000010', '_lunara_year' => '2024' ),
     ),
     'validation_errors' => array(),
@@ -86,6 +92,16 @@ function get_the_title( $post_id ) {
     return $GLOBALS['lunara_studio_test']['posts'][ $post_id ]['title'] ?? '';
 }
 
+function get_permalink( $post_id ) {
+    if ( array_key_exists( 'permalink', $GLOBALS['lunara_studio_test']['posts'][ $post_id ] ?? array() ) ) {
+        return $GLOBALS['lunara_studio_test']['posts'][ $post_id ]['permalink'];
+    }
+
+    return isset( $GLOBALS['lunara_studio_test']['posts'][ $post_id ] )
+        ? 'https://example.test/movies/' . absint( $post_id ) . '/'
+        : '';
+}
+
 function get_post_thumbnail_id( $post_id ) {
     return in_array( $post_id, array( 10, 11, 12, 13 ), true ) ? 500 + $post_id : 0;
 }
@@ -102,6 +118,9 @@ function get_posts( $args ) {
     $ids = array();
     foreach ( $GLOBALS['lunara_studio_test']['posts'] as $post_id => $post ) {
         if ( $post['post_type'] !== ( $args['post_type'] ?? '' ) ) {
+            continue;
+        }
+        if ( ! in_array( $post['post_status'], (array) ( $args['post_status'] ?? 'publish' ), true ) ) {
             continue;
         }
         foreach ( $args['meta_query'] ?? array() as $condition ) {
@@ -139,7 +158,7 @@ function lunara_studio_assert_true( $condition, $message ) {
     }
 }
 
-function lunara_studio_validate( $status, $movie_ids, $reasons ) {
+function lunara_studio_validate( $status, $movie_ids, $reasons, $source_imdb = 'tt0000010', $submit_source = true ) {
     $GLOBALS['lunara_studio_test']['validation_errors'] = array();
     $acf = array(
         Lunara_Debrief_Contract::FIELD_STATUS_KEY => $status,
@@ -153,10 +172,12 @@ function lunara_studio_validate( $status, $movie_ids, $reasons ) {
     }
 
     $_POST = array(
-        'post_ID'                => 99,
-        'lunara_imdb_title_id'   => 'tt0000010',
-        'acf'                    => $acf,
+        'post_ID' => 99,
+        'acf'     => $acf,
     );
+    if ( $submit_source ) {
+        $_POST['lunara_imdb_title_id'] = $source_imdb;
+    }
 
     Lunara_Debrief_Studio::validate_submission();
     return $GLOBALS['lunara_studio_test']['validation_errors'];
@@ -205,6 +226,55 @@ $complete_errors = lunara_studio_validate(
 );
 lunara_studio_assert_same( array(), $complete_errors, 'A complete three-film Debrief must pass Studio validation.' );
 
+$missing_source_errors = lunara_studio_validate(
+    'ready',
+    array( 11, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' ),
+    '',
+    false
+);
+lunara_studio_assert_same( 1, count( $missing_source_errors ), 'Ready must fail when no Review IMDb value is submitted.' );
+lunara_studio_assert_true(
+    false !== strpos( $missing_source_errors[0]['selector'], Lunara_Debrief_Contract::FIELD_STATUS_KEY ),
+    'Missing source-film validation must attach to Debrief readiness.'
+);
+
+$draft_source_errors = lunara_studio_validate(
+    'ready',
+    array( 11, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' ),
+    'tt0000014'
+);
+lunara_studio_assert_same( 1, count( $draft_source_errors ), 'A draft source Movie must block Ready once.' );
+lunara_studio_assert_true(
+    false !== strpos( $draft_source_errors[0]['message'], 'publicly renderable' ),
+    'Draft source validation must explain the public-renderability requirement.'
+);
+
+foreach ( array( 15, 16, 17 ) as $unrenderable_movie_id ) {
+    $unrenderable_errors = lunara_studio_validate(
+        'ready',
+        array( $unrenderable_movie_id, 12, 13 ),
+        array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
+    );
+    lunara_studio_assert_same( 1, count( $unrenderable_errors ), 'An incomplete published companion must produce one precise field error.' );
+    lunara_studio_assert_true(
+        false !== strpos( $unrenderable_errors[0]['selector'], 'field_lunara_review_theme_echo_movie' ),
+        'Public-renderability validation must attach to the submitted companion selector.'
+    );
+    lunara_studio_assert_true(
+        false !== strpos( $unrenderable_errors[0]['message'], 'title, IMDb ID, and public permalink' ),
+        'Public-renderability validation must state the complete canonical-film requirement.'
+    );
+}
+
+$incomplete_unrenderable_errors = lunara_studio_validate(
+    'incomplete',
+    array( 15, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
+);
+lunara_studio_assert_same( array(), $incomplete_unrenderable_errors, 'Incomplete Debriefs with renderability warnings must remain saveable.' );
+
 $attachment_errors = lunara_studio_validate(
     'ready',
     array( 50, 12, 13 ),
@@ -216,8 +286,8 @@ lunara_studio_assert_true(
     'Non-movie validation must attach to the submitted movie selector.'
 );
 lunara_studio_assert_true(
-    false !== strpos( $attachment_errors[0]['message'], 'published film' ),
-    'Non-movie validation must explain the published canonical-film requirement.'
+    false !== strpos( $attachment_errors[0]['message'], 'published Movie' ),
+    'Non-movie validation must explain the shared public Movie requirement.'
 );
 
 $draft_errors = lunara_studio_validate(
@@ -259,6 +329,15 @@ Lunara_Debrief_Studio::render_source_summary( array() );
 $source_html = ob_get_clean();
 lunara_studio_assert_true( false !== strpos( $source_html, 'Source Film' ), 'Source summary must identify the Review-owned film.' );
 lunara_studio_assert_true( false !== strpos( $source_html, 'Open Film Record' ), 'Linked source summary must expose the local film record.' );
+lunara_studio_assert_true( false !== strpos( $source_html, 'is-linked' ), 'A public source Movie must be visually marked as linked.' );
+
+$GLOBALS['lunara_studio_test']['meta'][99]['_lunara_imdb_title_id'] = 'tt0000014';
+ob_start();
+Lunara_Debrief_Studio::render_source_summary( array() );
+$draft_source_html = ob_get_clean();
+lunara_studio_assert_true( false !== strpos( $draft_source_html, 'is-pending' ), 'A draft source Movie must be visually marked as pending.' );
+lunara_studio_assert_true( false === strpos( $draft_source_html, 'Open Film Record' ), 'A draft source Movie must not be presented as linked.' );
+$GLOBALS['lunara_studio_test']['meta'][99]['_lunara_imdb_title_id'] = 'tt0000010';
 
 $GLOBALS['lunara_studio_test']['meta'][99] = array_merge(
     $GLOBALS['lunara_studio_test']['meta'][99],
