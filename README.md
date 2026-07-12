@@ -38,6 +38,24 @@ role. Incomplete work can be saved normally. Changing readiness to `ready` or
 prevents the reviewed film from pairing with itself. The saved preview and
 source-film summary use local WordPress data only.
 
+## Debrief Census
+
+Core `0.6.3` adds an operator-only WP-CLI census and migration dry run. Both
+commands are application-data read-only: they do not update Review content,
+ACF fields, legacy metadata, post status, options, or remote services. Normal
+WordPress reads may warm object or metadata caches; the commands never clear
+those caches or use them as migration state.
+
+```bash
+wp lunara debrief census --post-status=any --format=json
+wp lunara debrief migrate --dry-run --post-status=any --format=json
+```
+
+The census reports deterministic safety buckets and every canonical Movie
+candidate for each legacy IMDb reference. The dry run produces the same
+evidence plus a stable plan hash for later reconciliation. There is no apply
+command in this release.
+
 ## Source Locations
 
 - Local source: `G:\lunara-backups\work\lunara-core`
@@ -48,6 +66,7 @@ source-film summary use local WordPress data only.
 
 - Run `php tests/core-lifecycle-regression.php`.
 - Run `php tests/debrief-contract-regression.php`.
+- Run `php tests/debrief-migration-regression.php`.
 - Run `php tests/debrief-studio-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
