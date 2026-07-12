@@ -1,0 +1,242 @@
+.acf-postbox[data-key="group_lunara_review_trinity"] {
+    border-color: #9a7a2f;
+    box-shadow: 0 1px 2px rgba(13, 24, 35, 0.12);
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] > .postbox-header {
+    border-bottom-color: #d9c58b;
+    background: #f8f4e8;
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] > .postbox-header h2 {
+    color: #182938;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 18px;
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] .acf-tab-wrap {
+    background: #132534;
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] .acf-tab-group {
+    border-bottom: 0;
+    padding: 0 12px;
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] .acf-tab-group li a {
+    border: 0;
+    border-bottom: 3px solid transparent;
+    background: transparent;
+    color: #dbe4ea;
+    font-weight: 600;
+}
+
+.acf-postbox[data-key="group_lunara_review_trinity"] .acf-tab-group li.active a {
+    border-bottom-color: #d0ad50;
+    background: #fff;
+    color: #142634;
+}
+
+.lunara-debrief-source {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 68px;
+    padding: 14px;
+    border: 1px solid #c9d2d8;
+    background: #f7f9fa;
+}
+
+.lunara-debrief-source.is-linked {
+    border-color: #b79a4f;
+    background: #fbf8ef;
+}
+
+.lunara-debrief-source-mark {
+    display: grid;
+    flex: 0 0 42px;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border: 1px solid #9a7a2f;
+    color: #80601b;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 24px;
+}
+
+.lunara-debrief-source-copy {
+    display: grid;
+    flex: 1 1 auto;
+    gap: 3px;
+}
+
+.lunara-debrief-source-copy strong {
+    color: #172b3a;
+    font-size: 15px;
+}
+
+.lunara-debrief-source-copy span {
+    color: #536572;
+}
+
+.lunara-debrief-readiness {
+    border: 1px solid #c7d0d6;
+    background: #f8fafb;
+}
+
+.lunara-debrief-readiness-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px;
+    border-bottom: 1px solid #d6dde1;
+    background: #142634;
+    color: #fff;
+}
+
+.lunara-debrief-eyebrow {
+    color: #dabb67;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.lunara-debrief-readiness-head h3 {
+    margin: 3px 0 0;
+    color: #fff;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.lunara-debrief-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 3px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.36);
+    color: #f5f7f8;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.lunara-debrief-status.is-ready,
+.lunara-debrief-status.is-published {
+    border-color: #dabb67;
+    color: #f3d887;
+}
+
+.lunara-debrief-readiness-note {
+    margin: 16px 18px 0;
+    padding: 12px 14px;
+    border-left: 4px solid #b76c35;
+    background: #fff5ec;
+}
+
+.lunara-debrief-readiness-note.is-complete {
+    border-left-color: #3d8061;
+    background: #edf8f2;
+}
+
+.lunara-debrief-readiness-note ul {
+    margin: 7px 0 0 18px;
+}
+
+.lunara-debrief-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    padding: 18px;
+}
+
+.lunara-debrief-preview-card {
+    display: grid;
+    grid-template-columns: 82px minmax(0, 1fr);
+    gap: 12px;
+    min-width: 0;
+    min-height: 142px;
+    border: 1px solid #cbd3d8;
+    background: #fff;
+}
+
+.lunara-debrief-preview-card.is-empty {
+    border-style: dashed;
+    background: #f4f6f7;
+}
+
+.lunara-debrief-preview-media {
+    display: grid;
+    width: 82px;
+    aspect-ratio: 2 / 3;
+    place-items: center;
+    overflow: hidden;
+    background: #dfe5e8;
+    color: #687983;
+    font-size: 11px;
+}
+
+.lunara-debrief-preview-media img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.lunara-debrief-preview-copy {
+    min-width: 0;
+    padding: 11px 11px 11px 0;
+}
+
+.lunara-debrief-preview-role {
+    display: block;
+    color: #876921;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.lunara-debrief-preview-copy h4 {
+    margin: 4px 0 1px;
+    color: #172b3a;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    line-height: 1.2;
+}
+
+.lunara-debrief-preview-year {
+    color: #64757f;
+    font-size: 12px;
+}
+
+.lunara-debrief-preview-copy p {
+    margin: 8px 0 0;
+    color: #445762;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.lunara-debrief-preview-caption {
+    margin: 0;
+    padding: 0 18px 16px;
+}
+
+@media (max-width: 1200px) {
+    .lunara-debrief-preview-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 782px) {
+    .acf-postbox[data-key="group_lunara_review_trinity"] .acf-field[data-width] {
+        width: 100% !important;
+    }
+
+    .lunara-debrief-source,
+    .lunara-debrief-readiness-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
