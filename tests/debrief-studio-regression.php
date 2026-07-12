@@ -13,6 +13,8 @@ $GLOBALS['lunara_studio_test'] = array(
         11 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Theme Film' ),
         12 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Counter Film' ),
         13 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Career Film' ),
+        14 => array( 'post_type' => 'movie', 'post_status' => 'draft', 'title' => 'Draft Film' ),
+        50 => array( 'post_type' => 'attachment', 'post_status' => 'inherit', 'title' => 'Poster Attachment' ),
         99 => array( 'post_type' => 'review', 'post_status' => 'publish', 'title' => 'Source Review' ),
     ),
     'meta' => array(
@@ -20,6 +22,7 @@ $GLOBALS['lunara_studio_test'] = array(
         11 => array( 'imdb_title_id' => 'tt0000011', 'release_year' => '2020' ),
         12 => array( 'imdb_title_id' => 'tt0000012', 'release_year' => '2015' ),
         13 => array( 'imdb_title_id' => 'tt0000013', 'release_year' => '2010' ),
+        14 => array( 'imdb_title_id' => 'tt0000014', 'release_year' => '2025' ),
         99 => array( '_lunara_imdb_title_id' => 'tt0000010', '_lunara_year' => '2024' ),
     ),
     'validation_errors' => array(),
@@ -69,6 +72,10 @@ function sanitize_textarea_field( $value ) {
 
 function get_post_type( $post_id ) {
     return $GLOBALS['lunara_studio_test']['posts'][ $post_id ]['post_type'] ?? '';
+}
+
+function get_post_status( $post_id ) {
+    return $GLOBALS['lunara_studio_test']['posts'][ $post_id ]['post_status'] ?? '';
 }
 
 function get_post_meta( $post_id, $key ) {
@@ -197,6 +204,32 @@ $complete_errors = lunara_studio_validate(
     array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
 );
 lunara_studio_assert_same( array(), $complete_errors, 'A complete three-film Debrief must pass Studio validation.' );
+
+$attachment_errors = lunara_studio_validate(
+    'ready',
+    array( 50, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
+);
+lunara_studio_assert_same( 1, count( $attachment_errors ), 'A non-movie post ID must be rejected once with a precise validation error.' );
+lunara_studio_assert_true(
+    false !== strpos( $attachment_errors[0]['selector'], 'field_lunara_review_theme_echo_movie' ),
+    'Non-movie validation must attach to the submitted movie selector.'
+);
+lunara_studio_assert_true(
+    false !== strpos( $attachment_errors[0]['message'], 'published film' ),
+    'Non-movie validation must explain the published canonical-film requirement.'
+);
+
+$draft_errors = lunara_studio_validate(
+    'ready',
+    array( 14, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
+);
+lunara_studio_assert_same( 1, count( $draft_errors ), 'A draft Movie must be rejected once with a precise validation error.' );
+lunara_studio_assert_true(
+    false !== strpos( $draft_errors[0]['selector'], 'field_lunara_review_theme_echo_movie' ),
+    'Draft-movie validation must attach to the submitted movie selector.'
+);
 
 $duplicate_errors = lunara_studio_validate(
     'ready',

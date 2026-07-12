@@ -618,10 +618,15 @@ final class Lunara_Debrief_Contract {
         if ( '' !== $film['imdb_title_id'] ) {
             $identities[] = 'imdb:' . $film['imdb_title_id'];
         }
-        if ( '' !== $film['title'] ) {
-            $identities[] = 'title:' . self::normalize_title( $film['title'] ) . '|' . $film['year'];
+
+        if ( empty( $identities ) && '' !== $film['title'] ) {
+            $normalized_title = self::normalize_title( $film['title'] );
+            if ( '' !== $normalized_title ) {
+                $identities[] = 'title:' . $normalized_title . '|' . $film['year'];
+            }
         }
-        if ( $film['review_id'] > 0 ) {
+
+        if ( empty( $identities ) && $film['review_id'] > 0 ) {
             $identities[] = 'review:' . $film['review_id'];
         }
 
@@ -755,7 +760,7 @@ final class Lunara_Debrief_Contract {
      */
     private static function film_reference_from_movie( $movie_id, $review_id = 0 ) {
         $movie_id = absint( $movie_id );
-        if ( ! $movie_id ) {
+        if ( ! $movie_id || ( function_exists( 'get_post_type' ) && 'movie' !== get_post_type( $movie_id ) ) ) {
             return self::empty_film_reference();
         }
 

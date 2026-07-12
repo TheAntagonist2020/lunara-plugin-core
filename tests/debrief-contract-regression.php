@@ -13,6 +13,7 @@ $GLOBALS['lunara_debrief_test'] = array(
         11 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Theme Film' ),
         12 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Counter Film' ),
         13 => array( 'post_type' => 'movie', 'post_status' => 'publish', 'title' => 'Career Film' ),
+        50 => array( 'post_type' => 'attachment', 'post_status' => 'inherit', 'title' => 'Poster Attachment' ),
         99 => array( 'post_type' => 'review', 'post_status' => 'publish', 'title' => 'Source Film Review' ),
     ),
     'meta' => array(
@@ -50,6 +51,10 @@ function get_post_meta( $post_id, $key ) {
 
 function get_the_title( $post_id ) {
     return $GLOBALS['lunara_debrief_test']['posts'][ $post_id ]['title'] ?? '';
+}
+
+function get_post_type( $post_id ) {
+    return $GLOBALS['lunara_debrief_test']['posts'][ $post_id ]['post_type'] ?? '';
 }
 
 function get_posts( $args ) {
@@ -167,6 +172,37 @@ lunara_debrief_test_assert_true( $validation['valid'], 'A complete ready Debrief
 lunara_debrief_test_assert_true( $validation['complete'], 'A complete ready Debrief must report complete.' );
 lunara_debrief_test_assert_same( 3, count( $validation['record']['pairings'] ), 'The normalized record must contain exactly three pairings.' );
 
+$same_title_record = $complete_record;
+$same_title_record['reviewed_film']['title'] = 'Shared Title';
+$same_title_record['reviewed_film']['year']  = '2024';
+$same_title_record['pairings'][0]['film']['title'] = 'Shared Title';
+$same_title_record['pairings'][0]['film']['year']  = '2024';
+$same_title_record['pairings'][1]['film']['title'] = 'Shared Title';
+$same_title_record['pairings'][1]['film']['year']  = '2024';
+$same_title_result = Lunara_Debrief_Contract::validate( $same_title_record );
+$same_title_codes  = lunara_debrief_test_issue_codes( $same_title_result['errors'] );
+lunara_debrief_test_assert_true( $same_title_result['valid'], 'Distinct canonical IDs must remain valid when title and year match.' );
+lunara_debrief_test_assert_true(
+    ! in_array( 'duplicate_companion_film', $same_title_codes, true ),
+    'Title/year must not override distinct canonical companion identities.'
+);
+lunara_debrief_test_assert_true(
+    ! in_array( 'reviewed_film_reused', $same_title_codes, true ),
+    'Title/year must not create a false self-pair when canonical identities differ.'
+);
+lunara_debrief_test_assert_same(
+    array( 'movie:11', 'imdb:tt0000011' ),
+    Lunara_Debrief_Contract::film_identity_keys(
+        array(
+            'movie_id'      => 11,
+            'imdb_title_id' => 'tt0000011',
+            'title'         => 'Shared Title',
+            'year'          => '2024',
+        )
+    ),
+    'Title/year identity must be omitted when canonical IDs are available.'
+);
+
 $duplicate_record = $complete_record;
 $duplicate_record['pairings'][2]['film'] = $duplicate_record['pairings'][1]['film'];
 $duplicate_result = Lunara_Debrief_Contract::validate( $duplicate_record );
@@ -210,6 +246,9 @@ lunara_debrief_test_assert_same( 10, $stored_record['reviewed_film']['movie_id']
 lunara_debrief_test_assert_same( 11, $stored_record['pairings'][0]['film']['movie_id'], 'Theme Echo must read the existing relational movie field.' );
 lunara_debrief_test_assert_same( 'Current career value | tt0000013', $stored_record['pairings'][2]['legacy_value'], 'Current Career Context legacy text must win over Craft Mirror.' );
 lunara_debrief_test_assert_true( $stored_result['valid'], 'A complete stored Review record must validate.' );
+
+$attachment_reference = Lunara_Debrief_Contract::movie_reference( 50 );
+lunara_debrief_test_assert_same( 0, $attachment_reference['movie_id'], 'Non-movie post IDs must not become canonical film references.' );
 
 $contract_source = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-debrief-contract.php' );
 lunara_debrief_test_assert_true( false === strpos( $contract_source, 'wp_remote_get' ), 'The Core Debrief contract must never perform remote HTTP.' );

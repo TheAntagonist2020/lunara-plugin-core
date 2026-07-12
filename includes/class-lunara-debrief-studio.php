@@ -90,9 +90,19 @@ final class Lunara_Debrief_Studio {
             $source['imdb_title_id'] = $submitted_imdb;
         }
 
-        $pairings = array();
+        $pairings            = array();
+        $invalid_movie_paths = array();
         foreach ( Lunara_Debrief_Contract::roles() as $role => $definition ) {
             $movie_id = absint( $acf[ $definition['movie_field_key'] ] ?? 0 );
+            if ( $movie_id && ! self::is_published_movie( $movie_id ) ) {
+                $invalid_movie_paths[ 'pairings.' . $role . '.film' ] = true;
+                acf_add_validation_error(
+                    'acf[' . $definition['movie_field_key'] . ']',
+                    __( 'Choose a published film from the canonical Movie library.', 'lunara-core' )
+                );
+                $movie_id = 0;
+            }
+
             $pairings[] = array(
                 'role'             => $role,
                 'film'             => $movie_id ? Lunara_Debrief_Contract::movie_reference( $movie_id ) : array(),
@@ -110,10 +120,30 @@ final class Lunara_Debrief_Studio {
         );
 
         foreach ( $result['errors'] as $issue ) {
+            $is_replaced_missing_error = 'missing_companion_film' === ( $issue['code'] ?? '' )
+                && isset( $invalid_movie_paths[ $issue['path'] ?? '' ] );
+            if ( $is_replaced_missing_error ) {
+                continue;
+            }
+
             $field_key = self::field_key_for_issue( $issue );
             $selector  = '' !== $field_key ? 'acf[' . $field_key . ']' : '';
             acf_add_validation_error( $selector, $issue['message'] );
         }
+    }
+
+    /**
+     * Confirm a submitted relationship points to a public canonical film.
+     *
+     * @param int $movie_id Submitted post ID.
+     * @return bool
+     */
+    private static function is_published_movie( $movie_id ) {
+        return $movie_id > 0
+            && function_exists( 'get_post_type' )
+            && function_exists( 'get_post_status' )
+            && 'movie' === get_post_type( $movie_id )
+            && 'publish' === get_post_status( $movie_id );
     }
 
     /**
