@@ -25,6 +25,11 @@ final class Lunara_Debrief_Contract {
     const ROLE_COUNTER_PROGRAM = 'counter_program';
     const ROLE_CAREER_CONTEXT  = 'career_context';
 
+    const FIELD_STATUS_KEY         = 'field_lunara_review_debrief_status';
+    const FIELD_EDITOR_NOTE_KEY    = 'field_lunara_review_debrief_editor_note';
+    const FIELD_SOURCE_SUMMARY_KEY = 'field_lunara_review_debrief_source_summary';
+    const FIELD_PREVIEW_KEY        = 'field_lunara_review_debrief_preview';
+
     /**
      * Ordered role definitions and their existing ACF/legacy sources.
      *
@@ -35,19 +40,25 @@ final class Lunara_Debrief_Contract {
             self::ROLE_THEME_ECHO => array(
                 'label'            => __( 'Theme Echo', 'lunara-core' ),
                 'movie_field'      => 'theme_echo_movie',
+                'movie_field_key'  => 'field_lunara_review_theme_echo_movie',
                 'reason_field'     => 'theme_echo_note',
+                'reason_field_key' => 'field_lunara_review_theme_echo_note',
                 'legacy_meta_keys' => array( '_lunara_theme_echo' ),
             ),
             self::ROLE_COUNTER_PROGRAM => array(
                 'label'            => __( 'Counter-Program', 'lunara-core' ),
                 'movie_field'      => 'counter_program_movie',
+                'movie_field_key'  => 'field_lunara_review_counter_program_movie',
                 'reason_field'     => 'counter_program_note',
+                'reason_field_key' => 'field_lunara_review_counter_program_note',
                 'legacy_meta_keys' => array( '_lunara_counter_program' ),
             ),
             self::ROLE_CAREER_CONTEXT => array(
                 'label'            => __( 'Career Context', 'lunara-core' ),
                 'movie_field'      => 'career_context_movie',
+                'movie_field_key'  => 'field_lunara_review_career_context_movie',
                 'reason_field'     => 'career_context_note',
+                'reason_field_key' => 'field_lunara_review_career_context_note',
                 'legacy_meta_keys' => array( '_lunara_career_context', '_lunara_craft_mirror' ),
             ),
         );
@@ -64,6 +75,122 @@ final class Lunara_Debrief_Contract {
             self::STATUS_READY,
             self::STATUS_PUBLISHED,
         );
+    }
+
+    /**
+     * ACF fields for the Review-owned Debrief Studio.
+     *
+     * Existing movie/note keys are preserved so enabling the Studio does not
+     * move or duplicate relational data already stored by ACF.
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    public static function acf_fields() {
+        $fields = array(
+            array(
+                'key'       => 'field_lunara_review_debrief_overview_tab',
+                'label'     => __( 'Overview', 'lunara-core' ),
+                'name'      => '',
+                'type'      => 'tab',
+                'placement' => 'top',
+            ),
+            array(
+                'key'       => self::FIELD_SOURCE_SUMMARY_KEY,
+                'label'     => __( 'Reviewed Film', 'lunara-core' ),
+                'name'      => 'debrief_source_summary',
+                'type'      => 'message',
+                'message'   => '',
+                'new_lines' => 'wpautop',
+            ),
+            array(
+                'key'           => self::FIELD_STATUS_KEY,
+                'label'         => __( 'Debrief Readiness', 'lunara-core' ),
+                'name'          => 'debrief_status',
+                'type'          => 'select',
+                'choices'       => array(
+                    self::STATUS_INCOMPLETE => __( 'Incomplete - keep editing', 'lunara-core' ),
+                    self::STATUS_READY      => __( 'Ready - all three pairings approved', 'lunara-core' ),
+                    self::STATUS_PUBLISHED  => __( 'Published - editorially locked', 'lunara-core' ),
+                ),
+                'default_value' => self::STATUS_INCOMPLETE,
+                'return_format' => 'value',
+                'ui'            => 1,
+                'wrapper'       => array( 'class' => 'lunara-debrief-status-field' ),
+            ),
+            array(
+                'key'          => self::FIELD_EDITOR_NOTE_KEY,
+                'label'        => __( 'Private Editor Note', 'lunara-core' ),
+                'name'         => 'debrief_editor_note',
+                'type'         => 'textarea',
+                'rows'         => 2,
+                'new_lines'    => '',
+                'instructions' => __( 'Optional internal context. This is never rendered publicly.', 'lunara-core' ),
+            ),
+        );
+
+        $role_instructions = array(
+            self::ROLE_THEME_ECHO      => __( 'Choose the film that carries forward the reviewed film\'s central theme or emotional current.', 'lunara-core' ),
+            self::ROLE_COUNTER_PROGRAM => __( 'Choose a purposeful contrast that changes the temperature, perspective, or argument.', 'lunara-core' ),
+            self::ROLE_CAREER_CONTEXT  => __( 'Choose the film that deepens the filmmaker, performer, craft, movement, or awards lineage.', 'lunara-core' ),
+        );
+
+        foreach ( self::roles() as $role => $definition ) {
+            $fields[] = array(
+                'key'       => 'field_lunara_review_debrief_tab_' . $role,
+                'label'     => $definition['label'],
+                'name'      => '',
+                'type'      => 'tab',
+                'placement' => 'top',
+            );
+            $fields[] = array(
+                'key'           => $definition['movie_field_key'],
+                'label'         => sprintf( __( '%s Film', 'lunara-core' ), $definition['label'] ),
+                'name'          => $definition['movie_field'],
+                'type'          => 'post_object',
+                'post_type'     => array( 'movie' ),
+                'post_status'   => array( 'publish' ),
+                'return_format' => 'id',
+                'allow_null'    => 1,
+                'multiple'      => 0,
+                'ui'            => 1,
+                'instructions'  => $role_instructions[ $role ],
+                'wrapper'       => array(
+                    'width' => '38',
+                    'class' => 'lunara-debrief-film-field lunara-debrief-role-' . $role,
+                ),
+            );
+            $fields[] = array(
+                'key'          => $definition['reason_field_key'],
+                'label'        => __( 'Editorial Reason', 'lunara-core' ),
+                'name'         => $definition['reason_field'],
+                'type'         => 'textarea',
+                'rows'         => 4,
+                'new_lines'    => 'br',
+                'instructions' => __( 'Explain why this pairing belongs here. This reason appears with the film.', 'lunara-core' ),
+                'wrapper'      => array(
+                    'width' => '62',
+                    'class' => 'lunara-debrief-reason-field lunara-debrief-role-' . $role,
+                ),
+            );
+        }
+
+        $fields[] = array(
+            'key'       => 'field_lunara_review_debrief_preview_tab',
+            'label'     => __( 'Preview and Readiness', 'lunara-core' ),
+            'name'      => '',
+            'type'      => 'tab',
+            'placement' => 'top',
+        );
+        $fields[] = array(
+            'key'       => self::FIELD_PREVIEW_KEY,
+            'label'     => __( 'Saved Debrief Preview', 'lunara-core' ),
+            'name'      => 'debrief_preview',
+            'type'      => 'message',
+            'message'   => '',
+            'new_lines' => 'wpautop',
+        );
+
+        return $fields;
     }
 
     /**
@@ -328,8 +455,8 @@ final class Lunara_Debrief_Contract {
             }
         }
 
-        $source_identity = self::film_identity( $normalized['reviewed_film'] );
-        if ( '' === $source_identity ) {
+        $source_identities = self::film_identity_keys( $normalized['reviewed_film'] );
+        if ( empty( $source_identities ) ) {
             $complete = false;
             self::push_issue(
                 $strict,
@@ -341,10 +468,11 @@ final class Lunara_Debrief_Contract {
 
         $seen_films = array();
         foreach ( $normalized['pairings'] as $index => $pairing ) {
-            $identity = self::film_identity( $pairing['film'] );
-            $path     = 'pairings.' . $pairing['role'];
+            $identities = self::film_identity_keys( $pairing['film'] );
+            $identity   = reset( $identities );
+            $path       = 'pairings.' . $pairing['role'];
 
-            if ( '' === $identity ) {
+            if ( empty( $identities ) ) {
                 $complete = false;
                 self::push_issue(
                     $strict,
@@ -353,7 +481,8 @@ final class Lunara_Debrief_Contract {
                     $warnings
                 );
             } else {
-                if ( isset( $seen_films[ $identity ] ) ) {
+                $duplicate_identities = array_intersect( $identities, array_keys( $seen_films ) );
+                if ( ! empty( $duplicate_identities ) ) {
                     $complete = false;
                     self::push_issue(
                         $strict,
@@ -363,7 +492,7 @@ final class Lunara_Debrief_Contract {
                     );
                 }
 
-                if ( '' !== $source_identity && $identity === $source_identity ) {
+                if ( ! empty( array_intersect( $identities, $source_identities ) ) ) {
                     $complete = false;
                     self::push_issue(
                         $strict,
@@ -373,7 +502,9 @@ final class Lunara_Debrief_Contract {
                     );
                 }
 
-                $seen_films[ $identity ] = $index;
+                foreach ( $identities as $identity_key ) {
+                    $seen_films[ $identity_key ] = $index;
+                }
             }
 
             if ( '' === trim( (string) $pairing['editorial_reason'] ) ) {
@@ -467,22 +598,45 @@ final class Lunara_Debrief_Contract {
      * @return string
      */
     public static function film_identity( $film ) {
-        $film = self::normalize_film_reference( $film );
+        $identities = self::film_identity_keys( $film );
+        return empty( $identities ) ? '' : reset( $identities );
+    }
+
+    /**
+     * Every stable identity carried by a film reference.
+     *
+     * @param mixed $film Raw or normalized film reference.
+     * @return array<int,string>
+     */
+    public static function film_identity_keys( $film ) {
+        $film       = self::normalize_film_reference( $film );
+        $identities = array();
 
         if ( $film['movie_id'] > 0 ) {
-            return 'movie:' . $film['movie_id'];
+            $identities[] = 'movie:' . $film['movie_id'];
         }
         if ( '' !== $film['imdb_title_id'] ) {
-            return 'imdb:' . $film['imdb_title_id'];
+            $identities[] = 'imdb:' . $film['imdb_title_id'];
         }
         if ( '' !== $film['title'] ) {
-            return 'title:' . self::normalize_title( $film['title'] ) . '|' . $film['year'];
+            $identities[] = 'title:' . self::normalize_title( $film['title'] ) . '|' . $film['year'];
         }
         if ( $film['review_id'] > 0 ) {
-            return 'review:' . $film['review_id'];
+            $identities[] = 'review:' . $film['review_id'];
         }
 
-        return '';
+        return array_values( array_unique( $identities ) );
+    }
+
+    /**
+     * Read a lightweight local movie reference for Studio validation/preview.
+     *
+     * @param int $movie_id Movie post ID.
+     * @param int $review_id Optional owning Review ID.
+     * @return array<string,mixed>
+     */
+    public static function movie_reference( $movie_id, $review_id = 0 ) {
+        return self::film_reference_from_movie( $movie_id, $review_id );
     }
 
     /**

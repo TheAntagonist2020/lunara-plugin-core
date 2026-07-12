@@ -58,6 +58,11 @@ final class Lunara_Core {
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-entities.php';
         Lunara_Entities::init();
 
+        // Review-owned Debrief Studio. The Studio is admin-only; the active
+        // theme remains responsible for public presentation.
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-studio.php';
+        Lunara_Debrief_Studio::init();
+
         // Modular Essay Builder (Design Spec 2.0 §12): flexible-content
         // module palette on journal entries and posts. Theme-side renderer
         // lives in the child theme (inc/essay-builder.php).
@@ -311,6 +316,7 @@ final class Lunara_Core {
             <input type="text" id="lunara_where" name="lunara_where" value="<?php echo esc_attr( $where ); ?>" placeholder="Netflix, Max, Theaters">
         </div>
 
+        <?php if ( ! class_exists( 'Lunara_Debrief_Studio' ) || ! Lunara_Debrief_Studio::is_available() ) : ?>
         <div class="lunara-meta-section">
             <h4><?php esc_html_e( 'PAIR IT WITH', 'lunara-core' ); ?></h4>
 
@@ -345,6 +351,7 @@ final class Lunara_Core {
             }
             ?>
         </div>
+        <?php endif; ?>
 
         <div class="lunara-meta-section">
             <h4><?php esc_html_e( 'SPOILER REVIEW BRIDGE', 'lunara-core' ); ?></h4>
