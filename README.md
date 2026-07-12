@@ -29,6 +29,15 @@ The public theme may consume these hook-free helpers:
 - `lunara_debrief_validate_record()`
 - `lunara_debrief_get_review_record()`
 
+## Debrief Studio
+
+When ACF Pro is active, the Review editor presents a tabbed Debrief Studio with
+one searchable canonical-film selector and one editorial reason for each fixed
+role. Incomplete work can be saved normally. Changing readiness to `ready` or
+`published` enforces all three films, all three reasons, unique companions, and
+prevents the reviewed film from pairing with itself. The saved preview and
+source-film summary use local WordPress data only.
+
 ## Source Locations
 
 - Local source: `G:\lunara-backups\work\lunara-core`
@@ -39,6 +48,7 @@ The public theme may consume these hook-free helpers:
 
 - Run `php tests/core-lifecycle-regression.php`.
 - Run `php tests/debrief-contract-regression.php`.
+- Run `php tests/debrief-studio-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.

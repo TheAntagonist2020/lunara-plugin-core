@@ -21,6 +21,9 @@ jobs:
       - name: Debrief data contracts
         run: php tests/debrief-contract-regression.php
 
+      - name: Debrief Studio contracts
+        run: php tests/debrief-studio-regression.php
+
       - name: PHP syntax
         run: |
           set -e
