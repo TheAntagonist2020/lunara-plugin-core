@@ -39,39 +39,134 @@ final class Lunara_Graph_Growth {
 			return;
 		}
 
-		$tt = strtolower( trim( (string) get_post_meta( $post->ID, '_lunara_imdb_title_id', true ) ) );
-		if ( ! preg_match( '/^tt\d{7,8}$/', $tt ) ) {
-			return;
-		}
-
-		$existing = get_posts(
-			array(
-				'post_type'      => 'movie',
-				'post_status'    => array( 'publish', 'draft', 'pending', 'future', 'private' ),
-				'meta_key'       => 'imdb_title_id',
-				'meta_value'     => $tt,
-				'fields'         => 'ids',
-				'posts_per_page' => 1,
-				'no_found_rows'  => true,
-			)
+		$tt = Lunara_Debrief_Contract::normalize_imdb_title_id(
+			get_post_meta( $post->ID, '_lunara_imdb_title_id', true )
 		);
-		if ( $existing ) {
+		if ( '' === $tt ) {
 			return;
 		}
 
-		$movie_id = wp_insert_post(
+		if ( ! class_exists( 'Lunara_Movie_Identity_Lock', false ) ) {
+			require_once __DIR__ . '/class-lunara-movie-identity-lock.php';
+		}
+
+		$lock = Lunara_Movie_Identity_Lock::acquire( $tt );
+		if ( false === $lock ) {
+			return;
+		}
+
+		try {
+			$existing = get_posts(
+				array(
+					'post_type'      => 'movie',
+					'post_status'    => array_keys( get_post_stati() ),
+					'meta_query'     => array(
+						'relation' => 'OR',
+						array(
+							'key'   => 'imdb_title_id',
+							'value' => $tt,
+						),
+						array(
+							'key'   => '_lunara_entity_id',
+							'value' => $tt,
+						),
+					),
+					'fields'         => 'ids',
+					'posts_per_page' => 1,
+					'no_found_rows'  => true,
+				)
+			);
+			if ( $existing ) {
+				return;
+			}
+
+			$movie_id = wp_insert_post(
+				array(
+					'post_type'   => 'movie',
+					'post_status' => 'draft',
+					'post_title'  => sanitize_text_field( get_the_title( $post ) ),
+					'meta_input'  => array( 'imdb_title_id' => $tt ),
+				),
+				true
+			);
+			if ( is_wp_error( $movie_id ) || ! $movie_id ) {
+				return;
+			}
+
+			$stored_identity = Lunara_Debrief_Contract::normalize_imdb_title_id(
+				get_post_meta( $movie_id, 'imdb_title_id', true )
+			);
+			if ( $tt !== $stored_identity ) {
+				update_post_meta( $movie_id, 'imdb_title_id', $tt );
+				$stored_identity = Lunara_Debrief_Contract::normalize_imdb_title_id(
+					get_post_meta( $movie_id, 'imdb_title_id', true )
+				);
+			}
+			if ( $tt !== $stored_identity ) {
+				update_post_meta( $movie_id, '_lunara_entity_id', $tt );
+				$stored_identity = Lunara_Debrief_Contract::normalize_imdb_title_id(
+					get_post_meta( $movie_id, '_lunara_entity_id', true )
+				);
+			}
+			if ( $tt !== $stored_identity && self::force_identity_reservation( $movie_id, $tt ) ) {
+				$stored_identity = $tt;
+			}
+			if ( $tt !== $stored_identity ) {
+				// The draft is new and unusable without a queryable identity.
+				// Roll it back, and surface the exceptional double failure.
+				$deleted = wp_delete_post( $movie_id, true );
+				if ( false === $deleted || null === $deleted ) {
+					do_action( 'lunara_graph_growth_identity_rollback_failed', $movie_id, $tt, (int) $post->ID );
+				}
+				return;
+			}
+
+			update_post_meta( $movie_id, '_lunara_auto_grown_from', (int) $post->ID );
+		} finally {
+			Lunara_Movie_Identity_Lock::release( $lock );
+		}
+	}
+
+	/**
+	 * Reserve identity directly when normal post-meta APIs are filtered.
+	 *
+	 * This is a last recovery path for a brand-new draft. It uses the legacy
+	 * identity key already included in every duplicate lookup.
+	 *
+	 * @param int    $movie_id New Movie draft ID.
+	 * @param string $imdb_id  Canonical IMDb title ID.
+	 * @return bool
+	 */
+	private static function force_identity_reservation( $movie_id, $imdb_id ) {
+		global $wpdb;
+
+		if (
+			! is_object( $wpdb )
+			|| empty( $wpdb->postmeta )
+			|| ! is_callable( array( $wpdb, 'insert' ) )
+		) {
+			return false;
+		}
+
+		$inserted = $wpdb->insert(
+			$wpdb->postmeta,
 			array(
-				'post_type'   => 'movie',
-				'post_status' => 'draft',
-				'post_title'  => sanitize_text_field( get_the_title( $post ) ),
+				'post_id'    => (int) $movie_id,
+				'meta_key'   => '_lunara_entity_id',
+				'meta_value' => $imdb_id,
 			),
-			true
+			array( '%d', '%s', '%s' )
 		);
-		if ( is_wp_error( $movie_id ) || ! $movie_id ) {
-			return;
+		if ( 1 !== (int) $inserted ) {
+			return false;
 		}
 
-		update_post_meta( $movie_id, 'imdb_title_id', $tt );
-		update_post_meta( $movie_id, '_lunara_auto_grown_from', (int) $post->ID );
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( (int) $movie_id, 'post_meta' );
+		}
+
+		return $imdb_id === Lunara_Debrief_Contract::normalize_imdb_title_id(
+			get_post_meta( $movie_id, '_lunara_entity_id', true )
+		);
 	}
 }

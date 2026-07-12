@@ -22,6 +22,7 @@ $GLOBALS['lunara_test_state'] = array(
 	'slide_set_term'       => null,
 	'attachments'          => array(),
 	'post_updates'         => array(),
+	'actions'              => array(),
 );
 
 function plugin_dir_path( $file ) {
@@ -32,7 +33,9 @@ function plugin_dir_url() {
 	return 'https://example.test/wp-content/plugins/lunara-core/';
 }
 
-function add_action() {}
+function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
+	$GLOBALS['lunara_test_state']['actions'][] = array( $hook, $callback, $priority, $accepted_args );
+}
 
 function add_filter() {}
 
@@ -231,6 +234,26 @@ function lunara_test_assert_same( $expected, $actual, $message ) {
 
 require dirname( __DIR__ ) . '/lunara-core.php';
 
+lunara_test_assert_same(
+	false,
+	class_exists( 'Lunara_Movie_Importer', false ),
+	'Public-like bootstrap must leave private Movie importer services unloaded.'
+);
+lunara_test_assert_same(
+	false,
+	class_exists( 'Lunara_Movie_Import_Admin', false ),
+	'Public-like bootstrap must leave Movie importer admin code unloaded.'
+);
+
+Lunara_Core::maybe_bootstrap_movie_import_rest(
+	(object) array( 'query_vars' => array( 'rest_route' => '/wp/v2/posts' ) )
+);
+lunara_test_assert_same(
+	false,
+	class_exists( 'Lunara_Movie_Importer', false ),
+	'Unrelated public REST requests must leave private Movie importer services unloaded.'
+);
+
 lunara_test_reset_registrations();
 Lunara_Core::activate();
 
@@ -381,6 +404,39 @@ lunara_test_assert_same(
 	array(),
 	$GLOBALS['lunara_test_state']['post_updates'],
 	'Carousel ordering must validate every slide before writing any menu order.'
+);
+
+Lunara_Core::maybe_bootstrap_movie_import_rest(
+	(object) array( 'query_vars' => array( 'rest_route' => '/lunara/v1/movie-import/lookup' ) )
+);
+foreach (
+	array(
+		'Lunara_Movie_Identity_Lock',
+		'Lunara_Movie_Import_Contract',
+		'Lunara_Movie_Repository',
+		'Lunara_Movie_Provider_Gateway',
+		'Lunara_Movie_Importer',
+		'Lunara_Movie_Import_Admin',
+	) as $private_importer_class
+) {
+	lunara_test_assert_same(
+		true,
+		class_exists( $private_importer_class, false ),
+		'Private Movie importer packaging must load every dependency in order: ' . $private_importer_class
+	);
+}
+lunara_test_assert_same(
+	1,
+	count(
+		array_filter(
+			$GLOBALS['lunara_test_state']['actions'],
+			static function ( $action ) {
+				return 'rest_api_init' === $action[0]
+					&& array( 'Lunara_Movie_Import_Admin', 'register_rest_routes' ) === $action[1];
+			}
+		)
+	),
+	'The exact private importer route must register its REST callbacks once.'
 );
 
 echo "Core lifecycle regression checks passed.\n";

@@ -1,0 +1,171 @@
+.lunara-movie-import-launcher {
+    clear: both;
+    margin-top: 10px;
+    padding: 12px 14px;
+    border-left: 3px solid #b89442;
+    background: #f6f7f7;
+}
+
+.lunara-movie-import-launcher .description {
+    margin: 0 0 9px;
+}
+
+.lunara-movie-import-guard {
+    margin: 8px 0 0;
+    color: #646970;
+}
+
+.lunara-movie-import-dialog {
+    width: min(680px, calc(100vw - 32px));
+    max-height: min(760px, calc(100vh - 40px));
+    margin: auto;
+    padding: 0;
+    border: 1px solid #8c8f94;
+    border-radius: 6px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+    color: #1d2327;
+}
+
+.lunara-movie-import-dialog::backdrop {
+    background: rgba(13, 24, 34, 0.72);
+}
+
+.lunara-movie-import-dialog-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid #dcdcde;
+    background: #0b1c29;
+    color: #fff;
+}
+
+.lunara-movie-import-dialog-head h2 {
+    margin: 2px 0 0;
+    color: inherit;
+    font-size: 22px;
+    line-height: 1.25;
+}
+
+.lunara-movie-import-eyebrow,
+.lunara-movie-import-result-label {
+    display: block;
+    color: #c6a95d;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.lunara-movie-import-close {
+    min-width: 40px;
+    min-height: 40px;
+    margin: -7px -10px 0 0;
+    color: #fff;
+    font-size: 30px;
+    line-height: 1;
+    text-decoration: none;
+}
+
+.lunara-movie-import-close:hover,
+.lunara-movie-import-close:focus {
+    color: #e5cc88;
+}
+
+.lunara-movie-import-dialog-body {
+    overflow-y: auto;
+    padding: 22px 24px 26px;
+}
+
+.lunara-movie-import-dialog-body > p:first-child {
+    margin-top: 0;
+}
+
+.lunara-movie-import-dialog label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+}
+
+.lunara-movie-import-query {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+}
+
+.lunara-movie-import-query input {
+    width: 100%;
+    min-height: 36px;
+}
+
+.lunara-movie-import-status,
+.lunara-movie-import-alert {
+    min-height: 20px;
+    margin: 14px 0 0;
+}
+
+.lunara-movie-import-status {
+    color: #3858e9;
+}
+
+.lunara-movie-import-alert {
+    padding: 10px 12px;
+    border-left: 4px solid #d63638;
+    background: #fcf0f1;
+    color: #8a2424;
+}
+
+.lunara-movie-import-result {
+    margin-top: 16px;
+    padding: 18px;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.lunara-movie-import-result h3 {
+    margin: 4px 0 5px;
+    font-size: 19px;
+    line-height: 1.35;
+}
+
+.lunara-movie-import-result p {
+    margin: 7px 0;
+    color: #50575e;
+}
+
+.lunara-movie-import-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.lunara-movie-import-dialog[aria-busy="true"] .lunara-movie-import-result {
+    opacity: 0.62;
+}
+
+@media (max-width: 600px) {
+    .lunara-movie-import-dialog {
+        width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+    }
+
+    .lunara-movie-import-dialog-head,
+    .lunara-movie-import-dialog-body {
+        padding-right: 16px;
+        padding-left: 16px;
+    }
+
+    .lunara-movie-import-query {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lunara-movie-import-dialog {
+        scroll-behavior: auto;
+    }
+}
