@@ -18,6 +18,9 @@ jobs:
       - name: Core lifecycle contracts
         run: php tests/core-lifecycle-regression.php
 
+      - name: Debrief data contracts
+        run: php tests/debrief-contract-regression.php
+
       - name: PHP syntax
         run: |
           set -e
