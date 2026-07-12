@@ -145,8 +145,8 @@ final class Lunara_Entities {
 
     /**
      * ACF field groups (spec §4A), registered in PHP so the schema is
-     * versioned with the code. Requires ACF Pro for the repeater; the whole
-     * block is skipped gracefully when ACF is absent.
+     * versioned with the code. The whole block is skipped gracefully when ACF
+     * is absent.
      */
     public static function register_field_groups() {
         if ( ! function_exists( 'acf_add_local_field_group' ) ) {
@@ -361,62 +361,8 @@ final class Lunara_Entities {
         acf_add_local_field_group(
             array(
                 'key'    => 'group_lunara_review_trinity',
-                'title'  => 'Pairing Desk — Relational Trinity',
-                'fields' => array(
-                    array(
-                        'key'          => 'field_lunara_review_theme_echo_movie',
-                        'label'        => 'Theme Echo — Film',
-                        'name'         => 'theme_echo_movie',
-                        'type'         => 'post_object',
-                        'post_type'    => array( 'movie' ),
-                        'return_format' => 'id',
-                        'allow_null'   => 1,
-                        'ui'           => 1,
-                        'instructions' => 'Pick the film entity and the card builds itself: poster, year, Oscar record, dossier link. Leave empty to fall back to the legacy text field below the editor.',
-                    ),
-                    array(
-                        'key'   => 'field_lunara_review_theme_echo_note',
-                        'label' => 'Theme Echo — Note',
-                        'name'  => 'theme_echo_note',
-                        'type'  => 'textarea',
-                        'rows'  => 2,
-                        'instructions' => 'One line on why this film rhymes with the one under review.',
-                    ),
-                    array(
-                        'key'          => 'field_lunara_review_counter_program_movie',
-                        'label'        => 'Counter-Program — Film',
-                        'name'         => 'counter_program_movie',
-                        'type'         => 'post_object',
-                        'post_type'    => array( 'movie' ),
-                        'return_format' => 'id',
-                        'allow_null'   => 1,
-                        'ui'           => 1,
-                    ),
-                    array(
-                        'key'   => 'field_lunara_review_counter_program_note',
-                        'label' => 'Counter-Program — Note',
-                        'name'  => 'counter_program_note',
-                        'type'  => 'textarea',
-                        'rows'  => 2,
-                    ),
-                    array(
-                        'key'          => 'field_lunara_review_career_context_movie',
-                        'label'        => 'Career Context — Film',
-                        'name'         => 'career_context_movie',
-                        'type'         => 'post_object',
-                        'post_type'    => array( 'movie' ),
-                        'return_format' => 'id',
-                        'allow_null'   => 1,
-                        'ui'           => 1,
-                    ),
-                    array(
-                        'key'   => 'field_lunara_review_career_context_note',
-                        'label' => 'Career Context — Note',
-                        'name'  => 'career_context_note',
-                        'type'  => 'textarea',
-                        'rows'  => 2,
-                    ),
-                ),
+                'title'  => 'Debrief Studio',
+                'fields' => Lunara_Debrief_Contract::acf_fields(),
                 'location' => array(
                     array(
                         array(

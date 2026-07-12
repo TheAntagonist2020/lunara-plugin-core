@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.6.1
+ * Version: 0.6.2
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,10 +15,12 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.6.1' );
+define( 'LUNARA_CORE_VERSION', '0.6.2' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
+
+require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-contract.php';
 
 final class Lunara_Core {
 
@@ -55,6 +57,11 @@ final class Lunara_Core {
         // front-end output until the graph is populated.
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-entities.php';
         Lunara_Entities::init();
+
+        // Review-owned Debrief Studio. The Studio is admin-only; the active
+        // theme remains responsible for public presentation.
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-studio.php';
+        Lunara_Debrief_Studio::init();
 
         // Modular Essay Builder (Design Spec 2.0 §12): flexible-content
         // module palette on journal entries and posts. Theme-side renderer
@@ -309,6 +316,7 @@ final class Lunara_Core {
             <input type="text" id="lunara_where" name="lunara_where" value="<?php echo esc_attr( $where ); ?>" placeholder="Netflix, Max, Theaters">
         </div>
 
+        <?php if ( ! class_exists( 'Lunara_Debrief_Studio' ) || ! Lunara_Debrief_Studio::is_available() ) : ?>
         <div class="lunara-meta-section">
             <h4><?php esc_html_e( 'PAIR IT WITH', 'lunara-core' ); ?></h4>
 
@@ -343,6 +351,7 @@ final class Lunara_Core {
             }
             ?>
         </div>
+        <?php endif; ?>
 
         <div class="lunara-meta-section">
             <h4><?php esc_html_e( 'SPOILER REVIEW BRIDGE', 'lunara-core' ); ?></h4>
