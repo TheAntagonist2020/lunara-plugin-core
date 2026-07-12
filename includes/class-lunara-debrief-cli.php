@@ -53,7 +53,7 @@ final class Lunara_Debrief_CLI {
      *
      * ## OPTIONS
      *
-     * --dry-run
+     * [--dry-run]
      * : Required safety flag. No content is changed.
      *
      * [--post-status=<status>]

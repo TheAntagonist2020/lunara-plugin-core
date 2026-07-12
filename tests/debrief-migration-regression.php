@@ -669,8 +669,11 @@ try {
 lunara_migration_assert_true( $apply_rejected, 'Release C must expose no apply path.' );
 
 $migration_source = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-debrief-migration.php' );
+$cli_source       = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-debrief-cli.php' );
 lunara_migration_assert_true( false === strpos( $migration_source, 'posts_per_page\'         => 1' ), 'Candidate lookup must never be capped at one Movie.' );
 lunara_migration_assert_true( 1 === preg_match( "/'posts_per_page'\\s*=>\\s*-1/", $migration_source ), 'Candidate lookup must request every matching Movie.' );
 lunara_migration_assert_true( 0 === preg_match( '/\b(?:update_post_meta|update_field|delete_post_meta|wp_update_post|wp_remote_get)\s*\(/', $migration_source ), 'The migration service must contain no write or remote call.' );
+lunara_migration_assert_true( false !== strpos( $cli_source, '* [--dry-run]' ), 'WP-CLI must advertise dry-run as a valid valueless flag.' );
+lunara_migration_assert_true( false === strpos( $cli_source, '* --dry-run' ), 'WP-CLI rejects a required valueless flag in the command synopsis.' );
 
 echo "Debrief migration regression checks passed.\n";
