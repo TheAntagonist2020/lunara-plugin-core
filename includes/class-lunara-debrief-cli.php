@@ -1,6 +1,6 @@
 <?php
 /**
- * WP-CLI adapter for the read-only Debrief migration service.
+ * WP-CLI adapter for read-only Debrief operator services.
  *
  * @package Lunara_Core
  */
@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Inspect and plan Debrief migration without changing content.
+ * Inspect, reconcile, and suggest Debrief data without changing content.
  */
 final class Lunara_Debrief_CLI {
 
@@ -49,7 +49,89 @@ final class Lunara_Debrief_CLI {
     }
 
     /**
-     * Build a Debrief migration plan. Release C is dry-run only.
+     * Turn census evidence into actionable deterministic operator queues.
+     *
+     * ## OPTIONS
+     *
+     * [--post-status=<status>]
+     * : Review status to scan. Defaults to any.
+     *
+     * [--review-id=<ids>]
+     * : Comma-separated Review IDs.
+     *
+     * [--limit=<number>]
+     * : Maximum Reviews to scan.
+     *
+     * [--offset=<number>]
+     * : Number of Reviews to skip.
+     *
+     * [--format=<format>]
+     * : summary or json. Defaults to summary.
+     *
+     * @param array<int,string>    $args Positional arguments.
+     * @param array<string,mixed> $assoc_args Named arguments.
+     */
+    public function reconcile( $args, $assoc_args ) {
+        unset( $args );
+        self::reject_apply( $assoc_args );
+
+        try {
+            $pack = Lunara_Debrief_Reconciliation::build_pack( self::service_args( $assoc_args ) );
+        } catch ( Exception $error ) {
+            WP_CLI::error( $error->getMessage() );
+            return;
+        }
+
+        self::render_reconciliation( $pack, self::format( $assoc_args ) );
+    }
+
+    /**
+     * Report private, explainable local Movie candidates for one Review.
+     *
+     * ## OPTIONS
+     *
+     * --review-id=<id>
+     * : One existing Review ID. Lists and ranges are rejected.
+     *
+     * [--role=<role>]
+     * : One canonical Debrief role. Defaults to all three roles.
+     *
+     * [--limit=<number>]
+     * : Maximum candidates per role, from 1 to 12. Defaults to 6.
+     *
+     * [--format=<format>]
+     * : summary or json. Defaults to summary.
+     *
+     * @param array<int,string>    $args Positional arguments.
+     * @param array<string,mixed> $assoc_args Named arguments.
+     */
+    public function suggest( $args, $assoc_args ) {
+        unset( $args );
+        self::reject_apply( $assoc_args );
+
+        if ( ! array_key_exists( 'review-id', $assoc_args ) ) {
+            WP_CLI::error( 'The --review-id option is required for suggestions.' );
+            return;
+        }
+
+        try {
+            $report = Lunara_Debrief_Suggestions::for_review(
+                $assoc_args['review-id'],
+                array(
+                    'role'  => isset( $assoc_args['role'] ) ? (string) $assoc_args['role'] : '',
+                    'limit' => isset( $assoc_args['limit'] ) ? $assoc_args['limit'] : Lunara_Debrief_Suggestions::DEFAULT_RESULTS,
+                )
+            );
+        } catch ( Exception $error ) {
+            WP_CLI::error( $error->getMessage() );
+            return;
+        }
+
+        self::render_suggestions( $report, self::format( $assoc_args ) );
+    }
+
+    /**
+     * Build a Debrief migration plan. Release D remains dry-run only.
      *
      * ## OPTIONS
      *
@@ -77,10 +159,7 @@ final class Lunara_Debrief_CLI {
     public function migrate( $args, $assoc_args ) {
         unset( $args );
 
-        if ( isset( $assoc_args['apply'] ) ) {
-            WP_CLI::error( 'Apply mode is not available. Release C is read-only.' );
-            return;
-        }
+        self::reject_apply( $assoc_args );
         if ( ! isset( $assoc_args['dry-run'] ) ) {
             WP_CLI::error( 'The --dry-run flag is required. No apply path exists.' );
             return;
@@ -93,6 +172,17 @@ final class Lunara_Debrief_CLI {
             return;
         }
         self::render_report( $report, self::format( $assoc_args ) );
+    }
+
+    /**
+     * Reject every attempted write-mode flag on Release D commands.
+     *
+     * @param array<string,mixed> $assoc_args CLI arguments.
+     */
+    private static function reject_apply( $assoc_args ) {
+        if ( isset( $assoc_args['apply'] ) ) {
+            WP_CLI::error( 'Apply mode is not available. Release D is read-only.' );
+        }
     }
 
     /**
@@ -182,6 +272,63 @@ final class Lunara_Debrief_CLI {
         }
 
         WP_CLI::line( 'Plan hash: ' . $report['plan_hash'] );
+        WP_CLI::line( 'No data changed.' );
+    }
+
+    /**
+     * Print a reconciliation pack or its compact queue summary.
+     *
+     * @param array<string,mixed> $pack Reconciliation pack.
+     * @param string              $format Output format.
+     */
+    private static function render_reconciliation( $pack, $format ) {
+        if ( 'json' === $format ) {
+            WP_CLI::line( Lunara_Debrief_Migration::stable_json( $pack, true ) );
+            return;
+        }
+
+        WP_CLI::line( 'Lunara Debrief reconciliation pack' );
+        WP_CLI::line( 'Reviews scanned: ' . (int) $pack['summary']['reviews_scanned'] );
+        WP_CLI::line( 'Unique missing Movies: ' . (int) $pack['summary']['unique_missing_movies'] );
+        WP_CLI::line( 'Missing references: ' . (int) $pack['summary']['missing_reference_occurrences'] );
+        WP_CLI::line( 'Conflict Reviews: ' . (int) $pack['summary']['conflict_reviews'] );
+        WP_CLI::line( 'Auto-migratable Reviews: ' . (int) $pack['summary']['auto_migratable_reviews'] );
+        WP_CLI::line( 'Writes performed: 0' );
+        WP_CLI::line( 'Source plan hash: ' . $pack['source_plan_hash'] );
+        WP_CLI::line( 'Pack hash: ' . $pack['pack_hash'] );
+        WP_CLI::line( 'No data changed.' );
+    }
+
+    /**
+     * Print a suggestion report or compact role statuses.
+     *
+     * @param array<string,mixed> $report Suggestion report.
+     * @param string              $format Output format.
+     */
+    private static function render_suggestions( $report, $format ) {
+        if ( 'json' === $format ) {
+            WP_CLI::line( Lunara_Debrief_Migration::stable_json( $report, true ) );
+            return;
+        }
+
+        WP_CLI::line( 'Lunara Debrief private suggestions' );
+        WP_CLI::line( 'Review ID: ' . (int) $report['review_id'] );
+        WP_CLI::line( 'Candidate pool scanned: ' . (int) $report['candidate_pool']['scanned'] );
+        WP_CLI::line( 'Candidate pool truncated: ' . ( ! empty( $report['candidate_pool']['truncated'] ) ? 'yes' : 'no' ) );
+        foreach ( $report['roles'] as $role => $role_report ) {
+            WP_CLI::line(
+                $role . ': ' . $role_report['status'] . ' (' . count( $role_report['candidates'] ) . ' candidates)'
+            );
+            foreach ( $role_report['candidates'] as $candidate ) {
+                WP_CLI::line(
+                    '  ' . (int) $candidate['film']['movie_id'] . ' | '
+                    . $candidate['film']['title'] . ' | score ' . (int) $candidate['score']
+                    . ' | ' . $candidate['explanation']
+                );
+            }
+        }
+        WP_CLI::line( 'Writes performed: 0' );
+        WP_CLI::line( 'Suggestion hash: ' . $report['suggestion_hash'] );
         WP_CLI::line( 'No data changed.' );
     }
 }

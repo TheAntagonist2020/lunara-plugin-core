@@ -53,8 +53,34 @@ wp lunara debrief migrate --dry-run --post-status=any --format=json
 
 The census reports deterministic safety buckets and every canonical Movie
 candidate for each legacy IMDb reference. The dry run produces the same
-evidence plus a stable plan hash for later reconciliation. There is no apply
-command in this release.
+evidence plus a stable plan hash for later reconciliation.
+
+Core `0.6.4` adds two more WP-CLI-only, read-only operator surfaces:
+
+```bash
+wp lunara debrief reconcile --post-status=any --format=json
+wp lunara debrief suggest --review-id=30263 --format=json
+wp lunara debrief suggest --review-id=30263 --role=career_context --limit=6 --format=json
+```
+
+`reconcile` turns the census into deterministic queues for unique missing
+Movies, every source or companion reference occurrence, legacy conflicts,
+auto-migratable Reviews, and shortcode/block retirement review. It carries the
+source plan hash and adds a stable pack hash.
+
+`suggest` requires one explicit Review ID. It considers at most 200 published,
+publicly renderable local Movies that share a supported source relationship and
+returns at most 12 candidates per role.
+Career Context may rank shared directors, principal cast, and studios, with
+every score contribution returned as structured evidence. Theme Echo and
+Counter-Program deliberately return `insufficient_evidence` until controlled
+theme and tone metadata exists. Suggestions never write a film selection or
+author the editor-owned pairing reason.
+
+There is no apply command in this release. None of these services updates
+Review content, ACF fields, legacy metadata, post status, taxonomy terms,
+options, transients, or remote services. They are not loaded during public or
+editor WordPress requests.
 
 ## Source Locations
 
@@ -67,6 +93,8 @@ command in this release.
 - Run `php tests/core-lifecycle-regression.php`.
 - Run `php tests/debrief-contract-regression.php`.
 - Run `php tests/debrief-migration-regression.php`.
+- Run `php tests/debrief-reconciliation-regression.php`.
+- Run `php tests/debrief-suggestions-regression.php`.
 - Run `php tests/debrief-studio-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
