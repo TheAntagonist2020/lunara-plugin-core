@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.6.3
+ * Version: 0.6.4
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,17 +15,19 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.6.3' );
+define( 'LUNARA_CORE_VERSION', '0.6.4' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
 
 require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-contract.php';
 
-// Migration discovery is an operator-only, read-only WP-CLI surface. Keep it
-// out of normal WordPress requests so public and editor runtimes are unchanged.
+// Debrief reconciliation and suggestions are operator-only, read-only WP-CLI
+// surfaces. Keep them out of normal public and editor WordPress requests.
 if ( defined( 'WP_CLI' ) && WP_CLI ) {
     require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-migration.php';
+    require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-reconciliation.php';
+    require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-suggestions.php';
     require_once LUNARA_CORE_DIR . 'includes/class-lunara-debrief-cli.php';
 }
 

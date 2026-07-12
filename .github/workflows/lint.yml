@@ -24,6 +24,12 @@ jobs:
       - name: Debrief migration contracts
         run: php tests/debrief-migration-regression.php
 
+      - name: Debrief reconciliation contracts
+        run: php tests/debrief-reconciliation-regression.php
+
+      - name: Debrief suggestion contracts
+        run: php tests/debrief-suggestions-regression.php
+
       - name: Debrief Studio contracts
         run: php tests/debrief-studio-regression.php
 
