@@ -14,6 +14,21 @@ Do not deactivate it on the live site without first auditing theme/plugin depend
 - `Full Spoiler Review URL` and `Spoiler Link Label` bridge spoiler-free reviews to companion pieces when manual linking is preferred.
 - `IMDb Title ID` lets the active theme auto-pair published full-spoiler companions with spoiler-free reviews that share the same film identity.
 
+## Debrief Contract
+
+Lunara Core owns the Review-side Debrief data contract. A Debrief has exactly
+three ordered roles: `theme_echo`, `counter_program`, and `career_context`.
+Each role uses its existing fixed ACF movie relationship and note field. The
+contract normalizes the legacy `_lunara_craft_mirror` value to Career Context,
+but does not write migrations or change public rendering.
+
+The public theme may consume these hook-free helpers:
+
+- `lunara_debrief_contract_roles()`
+- `lunara_debrief_normalize_record()`
+- `lunara_debrief_validate_record()`
+- `lunara_debrief_get_review_record()`
+
 ## Source Locations
 
 - Local source: `G:\lunara-backups\work\lunara-core`
@@ -23,6 +38,7 @@ Do not deactivate it on the live site without first auditing theme/plugin depend
 ## Verification
 
 - Run `php tests/core-lifecycle-regression.php`.
+- Run `php tests/debrief-contract-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.
