@@ -32,9 +32,10 @@ final class Lunara_Debrief_Suggestions {
      *
      * @param mixed               $review_id Review ID.
      * @param array<string,mixed> $args Optional role and result limit.
+     * @param object|null          $gateway Optional injected provider gateway.
      * @return array<string,mixed>
      */
-    public static function for_review( $review_id, $args = array() ) {
+    public static function for_review( $review_id, $args = array(), $gateway = null ) {
         $review_id = self::positive_integer( $review_id, 'Review ID' );
         if ( ! function_exists( 'get_post_type' ) || 'review' !== get_post_type( $review_id ) ) {
             throw new InvalidArgumentException( 'Review ID ' . $review_id . ' does not identify an existing Review.' );
@@ -76,6 +77,39 @@ final class Lunara_Debrief_Suggestions {
 
         $source_public   = 'ready' === $source_resolution['status'];
         $source_signals  = isset( $source_snapshot['signals'] ) ? $source_snapshot['signals'] : self::empty_signals();
+        $has_career_signals = ! empty( $source_signals['directors']['ids'] )
+            || ! empty( $source_signals['principal_cast']['ids'] );
+
+        // Provider enrichment is deliberately injected, sparse-only, and in-memory.
+        // Existing local relationships always remain authoritative and avoid a call.
+        $career_requested = in_array( Lunara_Debrief_Contract::ROLE_CAREER_CONTEXT, $roles, true );
+        $source_imdb_id   = Lunara_Debrief_Contract::normalize_imdb_title_id( $source_film['imdb_title_id'] ?? '' );
+        if ( $source_public
+            && $career_requested
+            && ! $has_career_signals
+            && '' !== $source_imdb_id
+            && is_object( $gateway )
+            && method_exists( $gateway, 'get_candidate_by_imdb' ) ) {
+            $provider_result = null;
+            try {
+                $provider_result = $gateway->get_candidate_by_imdb( $source_imdb_id );
+            } catch ( Throwable $error ) {
+                $provider_result = null;
+            }
+
+            if ( is_array( $provider_result ) ) {
+                $provider_directors = self::normalize_provider_directors( $provider_result['directors'] ?? array() );
+                if ( ! empty( $provider_directors ) ) {
+                    $resolved_director_ids = self::resolve_existing_person_ids( $provider_directors );
+                    if ( ! empty( $resolved_director_ids ) ) {
+                        $source_signals['directors']['ids']    = $resolved_director_ids;
+                        $source_signals['directors']['labels'] = self::post_labels( $resolved_director_ids );
+                        $source_snapshot['signals']            = $source_signals;
+                    }
+                }
+            }
+        }
+
         $has_career_signals = ! empty( $source_signals['directors']['ids'] )
             || ! empty( $source_signals['principal_cast']['ids'] );
         $needs_pool = $source_public
@@ -582,6 +616,94 @@ final class Lunara_Debrief_Suggestions {
         return array_map( static function ( $post_id ) {
             return function_exists( 'get_the_title' ) ? (string) get_the_title( $post_id ) : '';
         }, $ids );
+    }
+
+    /**
+     * Normalize provider director names for exact local matching.
+     *
+     * @param mixed $raw_names Provider directors value.
+     * @return array<int,string>
+     */
+    private static function normalize_provider_directors( $raw_names ) {
+        if ( ! is_array( $raw_names ) ) {
+            return array();
+        }
+
+        $names = array();
+        foreach ( $raw_names as $raw_name ) {
+            if ( ! is_scalar( $raw_name ) || is_bool( $raw_name ) ) {
+                continue;
+            }
+            $name = self::normalize_person_label( (string) $raw_name );
+            if ( '' !== $name ) {
+                $names[ $name ] = true;
+            }
+        }
+
+        return array_keys( $names );
+    }
+
+    /**
+     * Match provider names against a bounded, published local Person query.
+     *
+     * @param array<int,string> $provider_names Normalized provider names.
+     * @return array<int,int>
+     */
+    private static function resolve_existing_person_ids( $provider_names ) {
+        if ( empty( $provider_names ) || ! function_exists( 'get_posts' ) ) {
+            return array();
+        }
+
+        $wanted = array_fill_keys( $provider_names, true );
+        $raw_ids = get_posts(
+            array(
+                'post_type'              => 'person',
+                'post_status'            => array( 'publish' ),
+                'posts_per_page'         => self::CANDIDATE_POOL_CAP,
+                'fields'                 => 'ids',
+                'orderby'                => 'ID',
+                'order'                  => 'ASC',
+                'no_found_rows'          => true,
+                'cache_results'          => false,
+                'update_post_meta_cache' => false,
+                'update_post_term_cache' => false,
+            )
+        );
+
+        $matched = array();
+        foreach ( is_array( $raw_ids ) ? $raw_ids : array() as $raw_id ) {
+            $person_id = absint( $raw_id );
+            if ( ! $person_id || ( function_exists( 'get_post_type' ) && 'person' !== get_post_type( $person_id ) ) ) {
+                continue;
+            }
+            if ( function_exists( 'get_post_status' ) && 'publish' !== get_post_status( $person_id ) ) {
+                continue;
+            }
+            $label = function_exists( 'get_the_title' ) ? self::normalize_person_label( get_the_title( $person_id ) ) : '';
+            if ( '' !== $label && isset( $wanted[ $label ] ) ) {
+                $matched[] = $person_id;
+            }
+        }
+
+        $matched = array_values( array_unique( $matched ) );
+        sort( $matched, SORT_NUMERIC );
+        return $matched;
+    }
+
+    /**
+     * Normalize labels for exact, case-insensitive comparisons.
+     *
+     * @param mixed $label Label value.
+     * @return string
+     */
+    private static function normalize_person_label( $label ) {
+        $label = trim( (string) $label );
+        $label = preg_replace( '/\s+/u', ' ', $label );
+        if ( function_exists( 'mb_strtolower' ) ) {
+            return mb_strtolower( $label, 'UTF-8' );
+        }
+
+        return strtolower( $label );
     }
 
     /**
