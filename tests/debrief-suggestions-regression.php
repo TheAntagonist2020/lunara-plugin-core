@@ -312,7 +312,16 @@ $pool_query_count_after_sparse = count( array_filter( $GLOBALS['lunara_suggestio
 lunara_suggestion_assert_same( $pool_query_count_before_sparse, $pool_query_count_after_sparse, 'Sparse sources must abstain before a candidate-pool query.' );
 
 $enrichment_gateway = new Lunara_Suggestion_Fixture_Gateway(
-    array( 'directors' => array( ' Director One ', 'DIRECTOR ONE', '', 17, null ) )
+    array(
+        'directors' => array(
+            array( 'name' => ' Director One ' ),
+            array( 'name' => 'DIRECTOR ONE' ),
+            array( 'name' => '' ),
+            array( 'id' => 17 ),
+            17,
+            null,
+        ),
+    )
 );
 $enriched = Lunara_Debrief_Suggestions::for_review(
     98,
@@ -328,6 +337,18 @@ lunara_suggestion_assert_true(
     'The existing bounded candidate query and scoring path must use the matched local Person ID.'
 );
 lunara_suggestion_assert_same( 0, $enriched['writes_performed'], 'Provider enrichment must remain zero-write.' );
+
+$scalar_enrichment_gateway = new Lunara_Suggestion_Fixture_Gateway(
+    array( 'directors' => array( ' Director One ' ) )
+);
+$scalar_enriched = Lunara_Debrief_Suggestions::for_review(
+    98,
+    array( 'role' => 'career_context' ),
+    $scalar_enrichment_gateway
+);
+lunara_suggestion_assert_same( 'ready', $scalar_enriched['roles']['career_context']['status'], 'Scalar provider director labels must remain supported.' );
+lunara_suggestion_assert_same( 1, $scalar_enrichment_gateway->calls, 'Scalar sparse enrichment must call the injected provider exactly once.' );
+lunara_suggestion_assert_same( 0, $scalar_enriched['writes_performed'], 'Scalar provider enrichment must remain zero-write.' );
 
 $enriched_repeat = Lunara_Debrief_Suggestions::for_review(
     98,

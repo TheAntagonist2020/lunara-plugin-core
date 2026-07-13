@@ -631,6 +631,14 @@ final class Lunara_Debrief_Suggestions {
 
         $names = array();
         foreach ( $raw_names as $raw_name ) {
+            // The provider gateway returns structured crew records, while
+            // older integrations may still return scalar director labels.
+            if ( is_array( $raw_name ) ) {
+                if ( ! array_key_exists( 'name', $raw_name ) ) {
+                    continue;
+                }
+                $raw_name = $raw_name['name'];
+            }
             if ( ! is_scalar( $raw_name ) || is_bool( $raw_name ) ) {
                 continue;
             }
