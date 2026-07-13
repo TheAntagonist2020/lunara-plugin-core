@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.7.0
+ * Version: 0.7.1
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.7.0' );
+define( 'LUNARA_CORE_VERSION', '0.7.1' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -65,9 +65,12 @@ final class Lunara_Core {
         // REST requests keep it unloaded; only its exact private REST prefix
         // is bootstrapped before WordPress dispatches the request.
         add_action( 'parse_request', array( __CLASS__, 'maybe_bootstrap_movie_import_rest' ), 5 );
+        add_action( 'parse_request', array( __CLASS__, 'maybe_bootstrap_review_draft_import_rest' ), 5 );
         if ( function_exists( 'is_admin' ) && is_admin() ) {
             self::load_movie_import_admin();
             Lunara_Movie_Import_Admin::init();
+            self::load_review_draft_import_admin();
+            Lunara_Review_Draft_Import_Admin::init();
         }
 
         // Entity graph (Design Spec 2.0 §4): movie / person / ledger_entry
@@ -125,6 +128,18 @@ final class Lunara_Core {
     }
 
     /**
+     * Load the private Review draft parser and editor controller.
+     */
+    public static function load_review_draft_import_admin() {
+        if ( class_exists( 'Lunara_Review_Draft_Import_Admin', false ) ) {
+            return;
+        }
+
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-draft-parser.php';
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-draft-import-admin.php';
+    }
+
+    /**
      * Load private Movie importer services in dependency order.
      */
     public static function load_movie_importer() {
@@ -166,6 +181,30 @@ final class Lunara_Core {
 
         self::load_movie_importer();
         add_action( 'rest_api_init', array( 'Lunara_Movie_Import_Admin', 'register_rest_routes' ), 5 );
+    }
+
+    /**
+     * Register Review draft importer routes only for their private prefix.
+     *
+     * @param WP $wp Current WordPress environment.
+     */
+    public static function maybe_bootstrap_review_draft_import_rest( $wp ) {
+        $route = '';
+        if ( is_object( $wp ) && isset( $wp->query_vars['rest_route'] ) ) {
+            $route = (string) $wp->query_vars['rest_route'];
+        } elseif ( isset( $_GET['rest_route'] ) ) {
+            $route = function_exists( 'wp_unslash' )
+                ? (string) wp_unslash( $_GET['rest_route'] )
+                : (string) $_GET['rest_route'];
+        }
+
+        $route = '/' . ltrim( $route, '/' );
+        if ( 0 !== strpos( $route, '/lunara/v1/review-draft-import/' ) ) {
+            return;
+        }
+
+        self::load_review_draft_import_admin();
+        add_action( 'rest_api_init', array( 'Lunara_Review_Draft_Import_Admin', 'register_rest_routes' ), 5 );
     }
 
     /**
@@ -215,7 +254,7 @@ final class Lunara_Core {
                 'has_archive'  => true,
                 'rewrite'      => array( 'slug' => 'reviews' ),
                 'menu_icon'    => 'dashicons-star-filled',
-                'supports'     => array( 'title', 'editor', 'thumbnail', 'excerpt' ),
+                'supports'     => array( 'title', 'editor', 'thumbnail', 'excerpt', 'revisions' ),
                 'taxonomies'   => array( 'category', 'post_tag' ),
                 'show_in_rest' => true,
             )
