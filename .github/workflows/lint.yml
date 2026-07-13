@@ -49,6 +49,12 @@ jobs:
           php tests/movie-importer-regression.php
           php tests/movie-import-admin-regression.php
 
+      - name: Private Review draft importer contracts
+        run: |
+          set -e
+          php tests/review-draft-parser-regression.php
+          php tests/review-draft-import-admin-regression.php
+
       - name: PHP syntax
         run: |
           set -e

@@ -67,6 +67,26 @@ Provider image paths and structured people data are normalized for later
 stages, but `0.7.0` does not download media or create Person relationships.
 Importer code and assets are not loaded during ordinary public requests.
 
+## Private Review Draft Importer
+
+Core `0.7.1` adds a draft-only Review editor importer for reference HTML files
+and pasted HTML. Preview is read-only. Apply requires an editable saved draft,
+an empty persisted body, a current REST nonce, and a clean editor with no
+unsaved changes. It never publishes, calls a remote provider, or overwrites
+existing Review fields.
+
+Supported prose becomes native paragraph, heading, quote, list, separator, or
+sanitized HTML blocks. The inline `LUNARA DEBRIEF` section is removed from the
+article body and mapped to the three canonical Debrief roles. Published local
+Movie records are resolved by IMDb identity; missing or conflicting companions
+remain incomplete and editable in Debrief Studio. Unsupported reference credits
+are retained in a protected import record rather than mixed into public prose.
+
+The source hash and pending/complete import record make retries idempotent and
+repairable. Shortcodes and snippets remain available elsewhere as tactical
+tools, but this importer stores the lasting Review source of truth in native
+WordPress blocks and structured fields.
+
 ## Debrief Census
 
 Core `0.6.3` adds an operator-only WP-CLI census and migration dry run. Both
@@ -134,6 +154,8 @@ editor WordPress requests.
 - Run `php tests/movie-importer-security-regression.php`.
 - Run `php tests/movie-importer-regression.php`.
 - Run `php tests/movie-import-admin-regression.php`.
+- Run `php tests/review-draft-parser-regression.php`.
+- Run `php tests/review-draft-import-admin-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.
