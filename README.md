@@ -69,11 +69,19 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
-Core `0.7.1` adds a draft-only Review editor importer for reference HTML files
-and pasted HTML. Preview is read-only. Apply requires an editable saved draft,
-an empty persisted body, a current REST nonce, and a clean editor with no
-unsaved changes. It never publishes, calls a remote provider, or overwrites
-existing Review fields.
+Core `0.7.2` adds a draft-only Review editor importer for reference HTML files,
+Word `.docx` exports, Google Docs HTML `.zip` exports, and pasted rich HTML.
+Preview is read-only. Apply requires an editable saved draft, an empty
+persisted body, a current REST nonce, and a clean editor with no unsaved
+changes. It never publishes, calls a remote provider, or overwrites existing
+Review fields.
+
+Word and Google packages are converted locally in memory with bounded ZIP/XML
+readers; no file is written to the server and no document macro, script, or
+remote conversion service is executed. Legacy binary `.doc` files are not
+accepted directly: save them as `.docx` or HTML first. Rich clipboard paste
+from Word or Google Docs captures the browser's `text/html` representation and
+uses the same parser as uploaded files.
 
 Supported prose becomes native paragraph, heading, quote, list, separator, or
 sanitized HTML blocks. The inline `LUNARA DEBRIEF` section is removed from the
@@ -155,6 +163,7 @@ editor WordPress requests.
 - Run `php tests/movie-importer-regression.php`.
 - Run `php tests/movie-import-admin-regression.php`.
 - Run `php tests/review-draft-parser-regression.php`.
+- Run `php tests/review-draft-document-regression.php`.
 - Run `php tests/review-draft-import-admin-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.

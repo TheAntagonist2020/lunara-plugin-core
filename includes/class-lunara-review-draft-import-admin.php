@@ -26,7 +26,7 @@ final class Lunara_Review_Draft_Import_Admin {
     public static function add_meta_box() {
         add_meta_box(
             'lunara_review_draft_import',
-            __( 'Import Reference HTML', 'lunara-core' ),
+            __( 'Import Review Draft', 'lunara-core' ),
             array( __CLASS__, 'render_meta_box' ),
             'review',
             'normal',
@@ -45,7 +45,7 @@ final class Lunara_Review_Draft_Import_Admin {
         ?>
         <div class="lunara-review-import" data-lunara-review-import data-review-id="<?php echo esc_attr( $review_id ); ?>">
             <p class="lunara-review-import-intro">
-                <?php esc_html_e( 'Turn a reference HTML draft into native WordPress blocks and editable Lunara fields. Preview first; nothing is published or overwritten.', 'lunara-core' ); ?>
+                <?php esc_html_e( 'Turn HTML, Word, or Google Docs draft exports into native WordPress blocks and editable Lunara fields. Preview first; nothing is published or overwritten.', 'lunara-core' ); ?>
             </p>
 
             <?php if ( 'save_first' === $importability['reason'] ) : ?>
@@ -55,12 +55,13 @@ final class Lunara_Review_Draft_Import_Admin {
             <?php else : ?>
                 <div class="lunara-review-import-grid">
                     <div>
-                        <label for="lunara-review-import-file"><strong><?php esc_html_e( 'Choose an HTML file', 'lunara-core' ); ?></strong></label>
-                        <input id="lunara-review-import-file" type="file" accept=".html,.htm,text/html" data-lunara-review-import-file>
+                        <label for="lunara-review-import-file"><strong><?php esc_html_e( 'Choose HTML, Word, or Google Docs export', 'lunara-core' ); ?></strong></label>
+                        <input id="lunara-review-import-file" type="file" accept=".html,.htm,.docx,.zip,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" data-lunara-review-import-file>
                     </div>
                     <div>
-                        <label for="lunara-review-import-html"><strong><?php esc_html_e( 'Or paste the draft HTML', 'lunara-core' ); ?></strong></label>
+                        <label for="lunara-review-import-html"><strong><?php esc_html_e( 'Or paste HTML/rich text from Word or Google Docs', 'lunara-core' ); ?></strong></label>
                         <textarea id="lunara-review-import-html" rows="8" data-lunara-review-import-html spellcheck="false"></textarea>
+                        <p class="description"><?php esc_html_e( 'Rich clipboard formatting is captured as HTML when the source application provides it.', 'lunara-core' ); ?></p>
                     </div>
                 </div>
                 <div class="lunara-review-import-actions">
@@ -119,10 +120,13 @@ final class Lunara_Review_Draft_Import_Admin {
                 'restBase' => esc_url_raw( rest_url( self::REST_NAMESPACE . self::REST_BASE . '/' ) ),
                 'nonce'    => wp_create_nonce( 'wp_rest' ),
                 'reviewId' => $review_id,
-                'maxBytes' => Lunara_Review_Draft_Parser::MAX_INPUT_BYTES,
+                'maxBytes'         => Lunara_Review_Draft_Parser::MAX_INPUT_BYTES,
+                'maxDocumentBytes' => Lunara_Review_Draft_Document::MAX_SOURCE_BYTES,
                 'strings'  => array(
-                    'choose'       => __( 'Choose or paste an HTML draft first.', 'lunara-core' ),
-                    'tooLarge'     => __( 'That draft is larger than the one-megabyte import limit.', 'lunara-core' ),
+                    'choose'          => __( 'Choose or paste an HTML draft, or choose a Word/Google export first.', 'lunara-core' ),
+                    'tooLarge'        => __( 'That HTML draft is larger than the one-megabyte import limit.', 'lunara-core' ),
+                    'documentTooLarge' => __( 'That Word/Google document is larger than the five-megabyte import limit.', 'lunara-core' ),
+                    'unsupportedFile' => __( 'Choose an .html, .htm, .docx, or Google HTML export (.zip) file.', 'lunara-core' ),
                     'reading'      => __( 'Reading the draft...', 'lunara-core' ),
                     'saveFirst'    => __( 'Save the Review draft before importing so no unsaved editor changes can be lost.', 'lunara-core' ),
                     'previewing'   => __( 'Checking structure and field mappings...', 'lunara-core' ),
@@ -152,10 +156,10 @@ final class Lunara_Review_Draft_Import_Admin {
                             'required'          => true,
                             'sanitize_callback' => 'absint',
                         ),
-                        'html'      => array(
-                            'required' => true,
-                            'type'     => 'string',
-                        ),
+                        'html'          => array( 'required' => false, 'type' => 'string' ),
+                        'document'      => array( 'required' => false, 'type' => 'string' ),
+                        'source_format' => array( 'required' => false, 'type' => 'string', 'sanitize_callback' => 'sanitize_key' ),
+                        'source_name'   => array( 'required' => false, 'type' => 'string' ),
                     ),
                 )
             );
@@ -177,18 +181,19 @@ final class Lunara_Review_Draft_Import_Admin {
             return $importable;
         }
 
-        $parsed    = self::parse_request_html( $request );
+        $parsed    = self::parse_request_source( $request );
         if ( is_wp_error( $parsed ) ) {
             return $parsed;
         }
 
-        $source_hash = hash( 'sha256', (string) $request->get_param( 'html' ) );
+        $source_hash = self::source_hash( $request );
         $resolutions = self::pairing_resolutions( $parsed['pairings'] );
 
         return rest_ensure_response(
             array(
                 'valid'       => true,
                 'sourceHash'  => $source_hash,
+                'sourceFormat' => isset( $parsed['source_format'] ) ? $parsed['source_format'] : 'html',
                 'summary'     => self::preview_summary( $parsed ),
                 'pairings'    => $parsed['pairings'],
                 'resolutions' => $resolutions,
@@ -201,8 +206,7 @@ final class Lunara_Review_Draft_Import_Admin {
     /** Apply one valid source to an empty Review draft. */
     public static function rest_apply( $request ) {
         $review_id = absint( $request->get_param( 'review_id' ) );
-        $html      = (string) $request->get_param( 'html' );
-        $hash      = hash( 'sha256', $html );
+        $hash      = self::source_hash( $request );
         $importable = self::importability_error( $review_id );
         if ( is_wp_error( $importable ) ) {
             return $importable;
@@ -220,7 +224,7 @@ final class Lunara_Review_Draft_Import_Admin {
             return rest_ensure_response( array( 'valid' => true, 'alreadyImported' => true ) );
         }
 
-        $parsed = self::parse_request_html( $request );
+        $parsed = self::parse_request_source( $request );
         if ( is_wp_error( $parsed ) ) {
             return $parsed;
         }
@@ -346,14 +350,44 @@ final class Lunara_Review_Draft_Import_Admin {
         );
     }
 
-    /** Parse and validate request HTML. */
-    private static function parse_request_html( $request ) {
-        $html = $request->get_param( 'html' );
+    /** Parse and validate a request HTML or local document export. */
+    private static function parse_request_source( $request ) {
+        $format   = sanitize_key( (string) $request->get_param( 'source_format' ) );
+        $warnings = array();
+
+        if ( '' === $format ) {
+            $format = 'html';
+        }
+        if ( ! in_array( $format, array( 'html', 'docx', 'zip' ), true ) ) {
+            return new WP_Error(
+                'unsupported_source_format',
+                __( 'Choose an HTML, DOCX, or Google HTML export source.', 'lunara-core' ),
+                array( 'status' => 400 )
+            );
+        }
+
+        if ( in_array( $format, array( 'docx', 'zip' ), true ) ) {
+            $converted = Lunara_Review_Draft_Document::convert( $request->get_param( 'document' ), $format );
+            if ( ! empty( $converted['errors'] ) ) {
+                return new WP_Error(
+                    'invalid_review_document',
+                    __( 'The Word/Google document could not be converted safely.', 'lunara-core' ),
+                    array( 'status' => 422, 'errors' => $converted['errors'], 'warnings' => $converted['warnings'] )
+                );
+            }
+            $html     = (string) $converted['html'];
+            $warnings = $converted['warnings'];
+        } else {
+            $html   = $request->get_param( 'html' );
+        }
+
         if ( ! is_string( $html ) || strlen( $html ) > Lunara_Review_Draft_Parser::MAX_INPUT_BYTES ) {
             return new WP_Error( 'invalid_source', __( 'The HTML source is missing or too large.', 'lunara-core' ), array( 'status' => 400 ) );
         }
 
         $parsed = Lunara_Review_Draft_Parser::parse( $html );
+        $parsed['source_format'] = $format;
+        $parsed['warnings']      = array_values( array_unique( array_merge( $warnings, $parsed['warnings'] ) ) );
         if ( empty( $parsed['valid'] ) ) {
             return new WP_Error(
                 'invalid_review_draft',
@@ -363,6 +397,19 @@ final class Lunara_Review_Draft_Import_Admin {
         }
 
         return $parsed;
+    }
+
+    /** Hash the exact source representation so retries remain idempotent. */
+    private static function source_hash( $request ) {
+        $format = sanitize_key( (string) $request->get_param( 'source_format' ) );
+        $is_document = in_array( $format, array( 'docx', 'zip' ), true );
+        $source = $is_document
+            ? (string) $request->get_param( 'document' )
+            : (string) $request->get_param( 'html' );
+
+        // Preserve the 0.7.1 HTML hash so existing import records remain
+        // idempotent after this format-expansion release.
+        return $is_document ? hash( 'sha256', $format . "\0" . $source ) : hash( 'sha256', $source );
     }
 
     /** Build a bounded preview safe for the editor UI. */

@@ -74,6 +74,12 @@ lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'LUNARA 
 lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'Echo Film' ), 'Debrief pairings must not duplicate into article content.' );
 lunara_review_parser_assert_same( $parsed, Lunara_Review_Draft_Parser::parse( $fixture ), 'Repeated parsing must be byte-for-byte deterministic.' );
 
+$wrapped_debrief = str_replace( '<strong>LUNARA DEBRIEF</strong>', '<p><strong>LUNARA DEBRIEF</strong></p>', $fixture );
+$wrapped_parsed  = Lunara_Review_Draft_Parser::parse( $wrapped_debrief );
+lunara_review_parser_assert_true( $wrapped_parsed['valid'], 'Word-style paragraph wrappers around the Debrief marker must remain valid.' );
+lunara_review_parser_assert_same( 'Echo Film', $wrapped_parsed['pairings']['theme_echo']['title'], 'A Debrief marker wrapped in a paragraph must still expose the Theme Echo.' );
+lunara_review_parser_assert_true( false === strpos( $wrapped_parsed['content'], 'LUNARA DEBRIEF' ), 'A wrapped Debrief marker must remain outside article content.' );
+
 $unterminated_metadata = preg_replace( '/-->\s*$/', '', $fixture );
 $unterminated_parsed   = Lunara_Review_Draft_Parser::parse( $unterminated_metadata );
 lunara_review_parser_assert_true( $unterminated_parsed['valid'], 'An EOF metadata comment without a closing delimiter must remain valid.' );

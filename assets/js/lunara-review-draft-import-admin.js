@@ -43,6 +43,11 @@
         return configured > 0 ? configured : 1048576;
     }
 
+    function maxDocumentBytes() {
+        var configured = Number(config.maxDocumentBytes || 0);
+        return configured > 0 ? configured : 5242880;
+    }
+
     function fieldValue(field) {
         if (field.type === 'checkbox' || field.type === 'radio') {
             return field.checked ? '1' : '0';
@@ -258,7 +263,7 @@
 
         root._lunaraGeneration = Number(root._lunaraGeneration || 0) + 1;
         root._lunaraPreview = null;
-        root._lunaraSource = '';
+        root._lunaraSource = null;
         [summary, pairings, warnings].forEach(function (container) {
             if (container) {
                 container.replaceChildren();
@@ -288,13 +293,79 @@
                 resolve(text(reader.result));
             });
             reader.addEventListener('error', function () {
-                reject(new Error('The selected HTML file could not be read.'));
+                reject(new Error('The selected document could not be read.'));
             });
             reader.addEventListener('abort', function () {
-                reject(new Error('Reading the selected HTML file was cancelled.'));
+                reject(new Error('Reading the selected document was cancelled.'));
             });
             reader.readAsText(file);
         });
+    }
+
+    function readBinaryFile(file) {
+        return new Promise(function (resolve, reject) {
+            var reader = new window.FileReader();
+            reader.addEventListener('load', function () {
+                resolve(reader.result);
+            });
+            reader.addEventListener('error', function () {
+                reject(new Error('The selected document could not be read.'));
+            });
+            reader.addEventListener('abort', function () {
+                reject(new Error('Reading the selected document was cancelled.'));
+            });
+            reader.readAsArrayBuffer(file);
+        });
+    }
+
+    function arrayBufferToBase64(buffer) {
+        var bytes = new window.Uint8Array(buffer);
+        var binary = '';
+        var offset;
+        var end;
+
+        for (offset = 0; offset < bytes.length; offset += 0x8000) {
+            end = Math.min(offset + 0x8000, bytes.length);
+            binary += String.fromCharCode.apply(null, bytes.subarray(offset, end));
+        }
+        return window.btoa(binary);
+    }
+
+    function fileFormat(file) {
+        var name = text(file && file.name).toLowerCase();
+        if (/\.html?$/.test(name)) {
+            return 'html';
+        }
+        if (/\.docx$/.test(name)) {
+            return 'docx';
+        }
+        if (/\.zip$/.test(name)) {
+            return 'zip';
+        }
+        return '';
+    }
+
+    function normalizeClipboardHtml(html) {
+        var parser;
+        var documentNode;
+
+        if (!html || !window.DOMParser) {
+            return html;
+        }
+        try {
+            parser = new window.DOMParser();
+            documentNode = parser.parseFromString(html, 'text/html');
+            ['script', 'style', 'iframe', 'object', 'embed'].forEach(function (tagName) {
+                documentNode.querySelectorAll(tagName).forEach(function (node) {
+                    node.remove();
+                });
+            });
+            return documentNode.body && documentNode.body.innerHTML
+                ? documentNode.body.innerHTML
+                : html;
+        } catch (error) {
+            return html;
+        }
     }
 
     function sourceFor(root) {
@@ -307,26 +378,76 @@
             if (byteLength(pasted) > maxBytes()) {
                 return Promise.reject(new Error(string('tooLarge', 'That draft is larger than the one-megabyte import limit.')));
             }
-            return Promise.resolve(pasted);
+            return Promise.resolve({
+                label: 'pasted HTML',
+                payload: {
+                    html: pasted,
+                    source_format: 'html',
+                    source_name: 'pasted-html'
+                }
+            });
         }
 
         if (!file) {
-            return Promise.reject(new Error(string('choose', 'Choose or paste an HTML draft first.')));
+            return Promise.reject(new Error(string('choose', 'Choose or paste an HTML draft, or choose a Word/Google export first.')));
         }
-        if (!/\.html?$/i.test(text(file.name))) {
-            return Promise.reject(new Error('Choose an .html or .htm file.'));
+        var format = fileFormat(file);
+        if (!format) {
+            return Promise.reject(new Error(string('unsupportedFile', 'Choose an .html, .htm, .docx, or Google HTML export (.zip) file.')));
         }
-        if (file.size > maxBytes()) {
-            return Promise.reject(new Error(string('tooLarge', 'That draft is larger than the one-megabyte import limit.')));
+        if (file.size > (format === 'html' ? maxBytes() : maxDocumentBytes())) {
+            return Promise.reject(new Error(
+                string(
+                    format === 'html' ? 'tooLarge' : 'documentTooLarge',
+                    format === 'html'
+                        ? 'That HTML draft is larger than the one-megabyte import limit.'
+                        : 'That Word/Google document is larger than the five-megabyte import limit.'
+                )
+            ));
         }
 
         setStatus(root, string('reading', 'Reading the draft...'));
-        return readFile(file).then(function (source) {
-            if (byteLength(source) > maxBytes()) {
-                throw new Error(string('tooLarge', 'That draft is larger than the one-megabyte import limit.'));
+        if (format === 'html') {
+            return readFile(file).then(function (source) {
+                if (byteLength(source) > maxBytes()) {
+                    throw new Error(string('tooLarge', 'That HTML draft is larger than the one-megabyte import limit.'));
+                }
+                return {
+                    label: text(file.name),
+                    payload: {
+                        html: source,
+                        source_format: 'html',
+                        source_name: text(file.name)
+                    }
+                };
+            });
+        }
+
+        return readBinaryFile(file).then(function (buffer) {
+            if (!buffer || buffer.byteLength > maxDocumentBytes()) {
+                throw new Error(string('documentTooLarge', 'That Word/Google document is larger than the five-megabyte import limit.'));
             }
-            return source;
+            return {
+                label: text(file.name),
+                payload: {
+                    document: arrayBufferToBase64(buffer),
+                    source_format: format,
+                    source_name: text(file.name)
+                }
+            };
         });
+    }
+
+    function requestPayload(root, source) {
+        var payload = {
+            review_id: Number(config.reviewId || root.getAttribute('data-review-id') || 0)
+        };
+        var sourcePayload = source && source.payload ? source.payload : {};
+
+        Object.keys(sourcePayload).forEach(function (key) {
+            payload[key] = sourcePayload[key];
+        });
+        return payload;
     }
 
     function post(endpoint, payload) {
@@ -528,7 +649,8 @@
             unsupported_element_unwrapped: 'Unsupported wrapper markup was removed while preserving its readable text.',
             duplicate_pairing_theme_echo: 'A duplicate Theme Echo entry was ignored.',
             duplicate_pairing_counter_program: 'A duplicate Counter-Program entry was ignored.',
-            duplicate_pairing_career_context: 'A duplicate Career Context entry was ignored.'
+            duplicate_pairing_career_context: 'A duplicate Career Context entry was ignored.',
+            document_converted_locally: 'The document was converted locally before parsing; no remote service was used.'
         };
         var normalized = text(code);
         var fallback;
@@ -635,10 +757,7 @@
                 return null;
             }
             setStatus(root, string('previewing', 'Checking structure and field mappings...'));
-            return post('preview', {
-                review_id: Number(config.reviewId || root.getAttribute('data-review-id') || 0),
-                html: source
-            }).then(function (response) {
+            return post('preview', requestPayload(root, source)).then(function (response) {
                 return { response: response, source: source };
             });
         }).then(function (result) {
@@ -676,10 +795,7 @@
         generation = beginRequest(root);
         setBusy(root, true);
 
-        post('apply', {
-            review_id: Number(config.reviewId || root.getAttribute('data-review-id') || 0),
-            html: source
-        }).then(function (response) {
+        post('apply', requestPayload(root, source)).then(function (response) {
             if (!requestIsCurrent(root, generation)) {
                 return;
             }
@@ -736,6 +852,19 @@
             });
         }
         if (textarea) {
+            textarea.addEventListener('paste', function (event) {
+                var clipboard = event.clipboardData || window.clipboardData;
+                var richHtml = clipboard && typeof clipboard.getData === 'function'
+                    ? clipboard.getData('text/html')
+                    : '';
+
+                if (!richHtml || !richHtml.trim()) {
+                    return;
+                }
+                event.preventDefault();
+                textarea.value = normalizeClipboardHtml(richHtml);
+                textarea.dispatchEvent(new window.Event('input', { bubbles: true }));
+            });
             textarea.addEventListener('input', function () {
                 if (textarea.value && fileInput) {
                     fileInput.value = '';
