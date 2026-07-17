@@ -190,15 +190,31 @@ final class Lunara_Review_Draft_Parser {
      */
     private static function extract_identity( &$html, &$result ) {
         $pattern = '/<!--\s*(.+?)\s*\((\d{4})\)\s*--\s*(tt\d{6,9})\s*-->/iu';
-        if ( ! preg_match( $pattern, $html, $match, PREG_OFFSET_CAPTURE ) ) {
-            $result['errors'][] = 'missing_identity';
+        if ( preg_match( $pattern, $html, $match, PREG_OFFSET_CAPTURE ) ) {
+            $result['title']   = self::plain_text( $match[1][0] );
+            $result['year']    = (int) $match[2][0];
+            $result['imdb_id'] = strtolower( $match[3][0] );
+            $html              = substr_replace( $html, '', $match[0][1], strlen( $match[0][0] ) );
             return;
         }
 
-        $result['title']   = self::plain_text( $match[1][0] );
-        $result['year']    = (int) $match[2][0];
-        $result['imdb_id'] = strtolower( $match[3][0] );
-        $html              = substr_replace( $html, '', $match[0][1], strlen( $match[0][0] ) );
+        // Word/Google exports discard HTML comments. Accept the same identity
+        // contract when it is retained as a standalone heading or paragraph.
+        if ( preg_match_all( '/<(?:h[1-6]|p)\b[^>]*>.*?<\/(?:h[1-6]|p)>/isu', $html, $visible_blocks, PREG_OFFSET_CAPTURE ) ) {
+            foreach ( $visible_blocks[0] as $visible_block ) {
+                $visible_text = self::plain_text( $visible_block[0] );
+                if ( preg_match( '/^(.+?)\s*\((\d{4})\)\s*(?:--|\x{2013}|\x{2014})\s*(tt\d{6,9})$/u', $visible_text, $visible_match ) ) {
+                    $result['title']   = self::plain_text( $visible_match[1] );
+                    $result['year']    = (int) $visible_match[2];
+                    $result['imdb_id'] = strtolower( $visible_match[3] );
+                    $html              = substr_replace( $html, '', $visible_block[1], strlen( $visible_block[0] ) );
+                    $result['warnings'][] = 'identity_from_visible_heading';
+                    return;
+                }
+            }
+        }
+
+        $result['errors'][] = 'missing_identity';
     }
 
     /**
@@ -208,7 +224,7 @@ final class Lunara_Review_Draft_Parser {
      * @return array{0:string,1:string}
      */
     private static function split_debrief( $html ) {
-        $pattern = '/<(?:strong|h[1-6]|p)\b[^>]*>\s*LUNARA\s+DEBRIEF\s*<\/(?:strong|h[1-6]|p)>/iu';
+        $pattern = '/<(?:strong|h[1-6]|p)\b[^>]*>\s*(?:(?:<(?:strong|b|em|span)\b[^>]*>\s*)*)LUNARA\s+DEBRIEF\s*(?:(?:<\/(?:strong|b|em|span)>\s*)*)<\/(?:strong|h[1-6]|p)>/iu';
         if ( ! preg_match( $pattern, $html, $match, PREG_OFFSET_CAPTURE ) ) {
             return array( $html, '' );
         }
@@ -246,16 +262,41 @@ final class Lunara_Review_Draft_Parser {
             return;
         }
 
-        $items = $root->getElementsByTagName( 'li' );
+        $xpath = new DOMXPath( $root->ownerDocument );
+        $items = $xpath->query( './/li | .//p', $root );
         foreach ( $items as $item ) {
-            $strongs = $item->getElementsByTagName( 'strong' );
-            if ( 0 === $strongs->length ) {
-                continue;
+            if ( 'p' === strtolower( $item->nodeName ) ) {
+                $ancestor = $item->parentNode;
+                $in_list  = false;
+                while ( $ancestor && $ancestor !== $root ) {
+                    if ( 'li' === strtolower( $ancestor->nodeName ) ) {
+                        $in_list = true;
+                        break;
+                    }
+                    $ancestor = $ancestor->parentNode;
+                }
+                if ( $in_list ) {
+                    continue;
+                }
             }
 
-            $label = trim( rtrim( self::plain_text( $strongs->item( 0 )->textContent ), ':' ) );
-            $value = self::plain_text( $item->textContent );
-            $value = preg_replace( '/^' . preg_quote( $label, '/' ) . '\s*:\s*/iu', '', $value );
+            $strongs = $item->getElementsByTagName( 'strong' );
+            if ( 0 === $strongs->length ) {
+                $strongs = $item->getElementsByTagName( 'b' );
+            }
+            if ( 0 === $strongs->length ) {
+                $plain_item = self::plain_text( $item->textContent );
+                if ( preg_match( '/^(Score|Where\s+to\s+Watch|Theme\s+Echo|Counter[- ]Program|Career\s+Context)\s*:\s*(.+)$/iu', $plain_item, $plain_match ) ) {
+                    $label = $plain_match[1];
+                    $value = $plain_match[2];
+                } else {
+                    continue;
+                }
+            } else {
+                $label = trim( rtrim( self::plain_text( $strongs->item( 0 )->textContent ), ':' ) );
+                $value = self::plain_text( $item->textContent );
+                $value = preg_replace( '/^' . preg_quote( $label, '/' ) . '\s*:\s*/iu', '', $value );
+            }
 
             switch ( self::normalize_label( $label ) ) {
                 case 'score':
