@@ -188,17 +188,22 @@ final class Lunara_Review_Draft_Import_Admin {
 
         $source_hash = self::source_hash( $request );
         $resolutions = self::pairing_resolutions( $parsed['pairings'] );
+        $debrief_preview_html = '';
+        if ( class_exists( 'Lunara_Debrief_Studio' ) && method_exists( 'Lunara_Debrief_Studio', 'pairing_preview_html' ) ) {
+            $debrief_preview_html = Lunara_Debrief_Studio::pairing_preview_html( $review_id, $parsed['pairings'] );
+        }
 
         return rest_ensure_response(
             array(
-                'valid'       => true,
-                'sourceHash'  => $source_hash,
-                'sourceFormat' => isset( $parsed['source_format'] ) ? $parsed['source_format'] : 'html',
-                'summary'     => self::preview_summary( $parsed ),
-                'pairings'    => $parsed['pairings'],
-                'resolutions' => $resolutions,
-                'warnings'    => $parsed['warnings'],
-                'existing'    => self::existing_state( $review_id, $parsed, $source_hash ),
+                'valid'               => true,
+                'sourceHash'          => $source_hash,
+                'sourceFormat'        => isset( $parsed['source_format'] ) ? $parsed['source_format'] : 'html',
+                'summary'             => self::preview_summary( $parsed ),
+                'pairings'            => $parsed['pairings'],
+                'resolutions'         => $resolutions,
+                'debriefPreviewHtml'  => $debrief_preview_html,
+                'warnings'            => $parsed['warnings'],
+                'existing'            => self::existing_state( $review_id, $parsed, $source_hash ),
             )
         );
     }

@@ -59,6 +59,7 @@ function lunara_review_document_zip( $files, $deflate = false ) {
 }
 
 require dirname( __DIR__ ) . '/includes/class-lunara-review-draft-document.php';
+require dirname( __DIR__ ) . '/includes/class-lunara-debrief-contract.php';
 require dirname( __DIR__ ) . '/includes/class-lunara-review-draft-parser.php';
 
 $word_xml = <<<'XML'

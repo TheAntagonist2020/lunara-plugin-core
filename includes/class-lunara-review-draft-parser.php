@@ -332,17 +332,22 @@ final class Lunara_Review_Draft_Parser {
             return;
         }
 
-        $pattern = '/^(.+?)\s*\((\d{4})\)\s*\[\s*(tt\d{6,9})\s*\]\s*(?:--|\x{2013}|\x{2014})\s*(.+)$/u';
-        if ( ! preg_match( $pattern, $value, $match ) ) {
+        if ( ! class_exists( 'Lunara_Debrief_Contract' ) ) {
+            $result['errors'][] = 'invalid_pairing_' . $role;
+            return;
+        }
+
+        $pairing = Lunara_Debrief_Contract::parse_pairing_text( $value );
+        if ( ! $pairing['valid'] ) {
             $result['errors'][] = 'invalid_pairing_' . $role;
             return;
         }
 
         $result['pairings'][ $role ] = array(
-            'title'   => self::plain_text( $match[1] ),
-            'year'    => (int) $match[2],
-            'imdb_id' => strtolower( $match[3] ),
-            'reason'  => self::plain_text( $match[4] ),
+            'title'   => self::plain_text( $pairing['title'] ),
+            'year'    => (int) $pairing['year'],
+            'imdb_id' => $pairing['imdb_id'],
+            'reason'  => self::plain_text( $pairing['reason'] ),
         );
     }
 

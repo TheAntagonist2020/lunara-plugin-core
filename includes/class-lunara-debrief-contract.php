@@ -236,6 +236,80 @@ final class Lunara_Debrief_Contract {
     }
 
     /**
+     * Parse the pairing text used by Review drafts and retained legacy fields.
+     *
+     * The editor has historically accepted several human-friendly forms:
+     * bracketed IDs, bare IDs followed by a period, full IMDb URLs, and IDs
+     * placed after the editorial reason. This parser normalizes those forms
+     * without making a remote request or writing post state.
+     *
+     * @param mixed $value Raw pairing text.
+     * @return array<string,mixed>
+     */
+    public static function parse_pairing_text( $value ) {
+        $raw  = trim( (string) $value );
+        $text = html_entity_decode( strip_tags( $raw ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+        $text = trim( (string) preg_replace( '/[\s\x{00A0}]+/u', ' ', $text ) );
+        $out  = array(
+            'raw'     => $raw,
+            'valid'   => false,
+            'title'   => '',
+            'year'    => 0,
+            'imdb_id' => '',
+            'reason'  => '',
+            'errors'  => array(),
+        );
+
+        if ( '' === $text ) {
+            $out['errors'][] = 'empty_pairing';
+            return $out;
+        }
+
+        preg_match_all( '/\btt\d{6,9}\b/i', $text, $id_matches );
+        $imdb_ids = array_values( array_unique( array_map( 'strtolower', $id_matches[0] ?? array() ) ) );
+        if ( 1 !== count( $imdb_ids ) ) {
+            $out['errors'][] = count( $imdb_ids ) > 1 ? 'multiple_imdb_ids' : 'missing_imdb_id';
+        } else {
+            $out['imdb_id'] = $imdb_ids[0];
+        }
+
+        if ( ! preg_match( '/^(.*?)\s*\((\d{4})\)(.*)$/u', $text, $parts ) ) {
+            $out['errors'][] = 'missing_title_year';
+            return $out;
+        }
+
+        $out['title'] = trim( $parts[1] );
+        $out['year']  = (int) $parts[2];
+        $tail         = (string) $parts[3];
+
+        foreach ( $imdb_ids as $imdb_id ) {
+            $quoted = preg_quote( $imdb_id, '/' );
+            $tail   = preg_replace( '/(?:\|\s*)?imdb(?:\s+(?:title\s*)?id)?\s*:?\s*[\[(]?\s*' . $quoted . '\s*[\])]?/iu', ' ', $tail );
+            $tail   = preg_replace( '#https?://(?:www\.)?imdb\.com/title/' . $quoted . '/?#iu', ' ', $tail );
+            $tail   = preg_replace( '/\[\s*' . $quoted . '\s*\]/iu', ' ', (string) $tail );
+            $tail   = preg_replace( '/\(\s*' . $quoted . '\s*\)/iu', ' ', (string) $tail );
+            $tail   = preg_replace( '/\b' . $quoted . '\b/iu', ' ', (string) $tail );
+        }
+
+        $tail = preg_replace( '/\[\s*\]|\(\s*\)/u', ' ', (string) $tail );
+        $tail = trim( (string) preg_replace( '/[\s\x{00A0}]+/u', ' ', (string) $tail ) );
+        $tail = preg_replace( '/(?:\s*\|\s*)+$/u', '', (string) $tail );
+        $tail = preg_replace( '/^(?:(?:\||--+|[-\x{2013}\x{2014}.:;])\s*)+/u', '', (string) $tail );
+        $out['reason'] = trim( (string) $tail );
+
+        if ( '' === $out['title'] ) {
+            $out['errors'][] = 'missing_title';
+        }
+        if ( '' === $out['reason'] ) {
+            $out['errors'][] = 'missing_reason';
+        }
+
+        $out['errors'] = array_values( array_unique( $out['errors'] ) );
+        $out['valid']  = empty( $out['errors'] );
+        return $out;
+    }
+
+    /**
      * Empty normalized film reference.
      *
      * @return array<string,mixed>
@@ -593,9 +667,25 @@ final class Lunara_Debrief_Contract {
                 }
             }
 
-            $film = $relationship_id
-                ? self::film_reference_from_movie( $relationship_id )
-                : array( 'imdb_title_id' => self::normalize_imdb_title_id( $legacy_value ) );
+            $legacy = self::parse_pairing_text( $legacy_value );
+            $film   = $relationship_id ? self::film_reference_from_movie( $relationship_id ) : self::empty_film_reference();
+
+            if ( ! $relationship_id && '' !== $legacy['imdb_id'] ) {
+                $film = self::public_movie_reference_by_imdb( $legacy['imdb_id'], $review_id );
+                if ( ! $film['movie_id'] ) {
+                    $film = self::normalize_film_reference(
+                        array(
+                            'imdb_title_id' => $legacy['imdb_id'],
+                            'title'         => $legacy['title'],
+                            'year'          => $legacy['year'],
+                        )
+                    );
+                }
+            }
+
+            if ( '' === trim( $reason ) && '' !== $legacy['reason'] ) {
+                $reason = $legacy['reason'];
+            }
 
             $pairings[] = array(
                 'role'             => $role,
