@@ -583,15 +583,51 @@
         var container = select(root, '[data-lunara-review-import-pairings]');
         var pairings = response.pairings || {};
         var resolutions = response.resolutions || {};
+        var richPreview = typeof response.debriefPreviewHtml === 'string'
+            ? response.debriefPreviewHtml.trim()
+            : '';
         var existingDebrief = response.existing && response.existing.debrief
             ? response.existing.debrief
             : {};
         var unresolved = false;
+        var preservedRoles = [];
 
         if (!container) {
             return;
         }
+        container.classList.remove('has-rich-preview');
         container.replaceChildren();
+
+        Object.keys(roleLabels).forEach(function (role) {
+            var preserved = existingDebrief[role] || {};
+            if (preserved.movie || preserved.reason) {
+                preservedRoles.push(roleLabels[role]);
+            }
+            if (text((resolutions[role] || {}).status) !== 'published') {
+                unresolved = true;
+            }
+        });
+
+        if (richPreview) {
+            container.classList.add('has-rich-preview');
+            container.innerHTML = richPreview;
+            if (preservedRoles.length) {
+                container.appendChild(element(
+                    'p',
+                    'lunara-review-import-preserved',
+                    'Existing Debrief Studio choices will be preserved on apply: ' + preservedRoles.join(', ') + '.'
+                ));
+            }
+            if (unresolved) {
+                container.appendChild(element(
+                    'p',
+                    'lunara-review-import-resolution-note',
+                    string('unresolved', 'Missing local Movie records remain editable in Debrief Studio.')
+                ));
+            }
+            return;
+        }
+
         container.appendChild(element('h3', 'lunara-review-import-section-title', 'Debrief pairings'));
 
         Object.keys(roleLabels).forEach(function (role) {
@@ -626,9 +662,6 @@
             }
             container.appendChild(row);
 
-            if (text(resolution.status) !== 'published') {
-                unresolved = true;
-            }
         });
 
         if (unresolved) {

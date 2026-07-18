@@ -60,6 +60,14 @@ function esc_url( $url ) {
     return (string) $url;
 }
 
+function wp_kses_post( $html ) {
+    return (string) $html;
+}
+
+function home_url( $path = '' ) {
+    return 'https://example.test/' . ltrim( (string) $path, '/' );
+}
+
 function absint( $value ) {
     return abs( (int) $value );
 }
@@ -108,6 +116,16 @@ function get_post_thumbnail_id( $post_id ) {
 
 function wp_get_attachment_image( $attachment_id, $size, $icon, $attrs ) {
     return '<img src="https://example.test/media/' . absint( $attachment_id ) . '.jpg" alt="' . esc_attr( $attrs['alt'] ?? '' ) . '">';
+}
+
+function lunara_get_oscar_ledger_counts( $imdb_id ) {
+    return 'tt0000012' === $imdb_id
+        ? array( 'noms' => 5, 'wins' => 2 )
+        : array( 'noms' => 0, 'wins' => 0 );
+}
+
+function lunara_get_internal_title_reference_url( $imdb_id ) {
+    return home_url( '/oscars/title/' . strtolower( (string) $imdb_id ) . '/' );
 }
 
 function get_edit_post_link( $post_id ) {
@@ -354,12 +372,34 @@ $GLOBALS['lunara_studio_test']['meta'][99] = array_merge(
 ob_start();
 Lunara_Debrief_Studio::render_preview( array() );
 $preview_html = ob_get_clean();
-lunara_studio_assert_same( 3, substr_count( $preview_html, '<article class="lunara-debrief-preview-card' ), 'Saved preview must render exactly three pairing cards.' );
+lunara_studio_assert_same( 3, substr_count( $preview_html, '<article class="lunara-pair-preview-card' ), 'Saved preview must render exactly three pairing cards.' );
 lunara_studio_assert_true( false !== strpos( $preview_html, 'All three companion films' ), 'Complete preview must expose its readiness result.' );
+lunara_studio_assert_true( false !== strpos( $preview_html, 'Pair It With Preview' ), 'Studio must retain the established rich Pair It With preview.' );
+lunara_studio_assert_true( false !== strpos( $preview_html, 'https://www.imdb.com/title/tt0000011/' ), 'Every resolved pairing must expose its direct IMDb link.' );
+lunara_studio_assert_true( false !== strpos( $preview_html, 'Poster ready' ), 'Resolved local posters must be visible in the Studio preview.' );
+lunara_studio_assert_true( false !== strpos( $preview_html, 'Oscar Ledger: 5 noms / 2 wins' ), 'Oscar Ledger status must remain visible in the Studio preview.' );
+lunara_studio_assert_true( false !== strpos( $preview_html, 'Links to Oscar page' ), 'The preview must identify its internal destination.' );
+
+$GLOBALS['lunara_studio_test']['meta'][99] = array(
+    '_lunara_imdb_title_id'  => 'tt0000010',
+    '_lunara_year'           => '2024',
+    '_lunara_theme_echo'     => 'Theme Film (2020) tt0000011. Legacy theme reason.',
+    '_lunara_counter_program'=> 'Counter Film (2015) https://www.imdb.com/title/tt0000012/ — Legacy counter reason.',
+    '_lunara_career_context' => 'Career Film (2010) — Legacy career reason. | IMDb: tt0000013',
+);
+ob_start();
+Lunara_Debrief_Studio::render_preview( array() );
+$legacy_preview_html = ob_get_clean();
+lunara_studio_assert_same( 3, substr_count( $legacy_preview_html, '<article class="lunara-pair-preview-card' ), 'Legacy-only Reviews must still render exactly three rich preview cards.' );
+lunara_studio_assert_true( false !== strpos( $legacy_preview_html, 'Legacy theme reason.' ), 'Legacy editorial reasons must be projected read-only into Studio.' );
+lunara_studio_assert_true( false !== strpos( $legacy_preview_html, 'tt0000013' ), 'Legacy IMDb identities must remain available to the rich preview.' );
+lunara_studio_assert_true( false !== strpos( $legacy_preview_html, 'legacy pairing fields' ), 'Studio must explain when it is previewing retained legacy pairing data.' );
 
 $studio_source = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-debrief-studio.php' );
+$core_source   = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 lunara_studio_assert_true( false === strpos( $studio_source, 'wp_remote_get' ), 'The Studio must never perform remote HTTP.' );
 lunara_studio_assert_true( false === strpos( $studio_source, 'update_post_meta' ), 'Studio validation and preview must not perform migrations.' );
 lunara_studio_assert_true( file_exists( dirname( __DIR__ ) . '/assets/css/lunara-debrief-studio.css' ), 'Studio stylesheet is missing.' );
+lunara_studio_assert_true( false !== strpos( $core_source, "__( 'Review Controls', 'lunara-core' )" ), 'When Studio owns pairings, the remaining legacy box must be named Review Controls rather than a second Debrief.' );
 
 echo "Debrief Studio regression checks passed.\n";

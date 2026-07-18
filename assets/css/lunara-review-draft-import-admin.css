@@ -95,6 +95,16 @@
     grid-row: span 2;
 }
 
+.lunara-review-import-pairings.has-rich-preview {
+    grid-column: 1 / -1;
+    grid-row: auto;
+}
+
+.lunara-review-import-pairings.has-rich-preview > .lunara-review-import-preserved,
+.lunara-review-import-pairings.has-rich-preview > .lunara-review-import-resolution-note {
+    margin-left: 0;
+}
+
 .lunara-review-import-warnings {
     margin-top: 18px;
 }

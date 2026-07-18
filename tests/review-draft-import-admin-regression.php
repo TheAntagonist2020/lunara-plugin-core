@@ -8,7 +8,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'LUNARA_CORE_DIR', dirname( __DIR__ ) . '/' );
 define( 'LUNARA_CORE_URL', 'https://example.test/wp-content/plugins/lunara-core/' );
-define( 'LUNARA_CORE_VERSION', '0.7.2' );
+define( 'LUNARA_CORE_VERSION', '0.7.3' );
 
 $GLOBALS['lunara_review_import_test'] = array(
     'posts' => array(
@@ -82,6 +82,16 @@ class Lunara_Core {
     }
     public function sync_review_archive_terms( $review_id ) {
         $GLOBALS['lunara_review_import_test']['sync_calls'][] = (int) $review_id;
+    }
+}
+
+final class Lunara_Debrief_Studio {
+    public static function pairing_preview_html( $review_id, $pairings ) {
+        $titles = array();
+        foreach ( $pairings as $pairing ) {
+            $titles[] = isset( $pairing['title'] ) ? $pairing['title'] : '';
+        }
+        return '<div class="lunara-pair-preview">' . esc_html( implode( '|', $titles ) ) . '</div>';
     }
 }
 
@@ -265,6 +275,8 @@ lunara_review_import_assert_same(
 );
 lunara_review_import_assert_true( ! array_filter( $preview['existing']['fields'] ), 'A fresh Review draft must report all canonical fields as empty.' );
 lunara_review_import_assert_true( isset( $preview['summary']['metadata']['composer'] ), 'Preview summaries must preserve unsupported source metadata.' );
+lunara_review_import_assert_true( false !== strpos( $preview['debriefPreviewHtml'], 'lunara-pair-preview' ), 'The REST preview must include the shared rich Debrief preview HTML.' );
+lunara_review_import_assert_true( false !== strpos( $preview['debriefPreviewHtml'], 'The Fog of War' ), 'The rich preview must receive the parsed companion films before apply.' );
 
 $unsupported_format = Lunara_Review_Draft_Import_Admin::rest_preview( new Lunara_Review_Import_Test_Request( array( 'review_id' => 10, 'source_format' => 'doc', 'html' => $html ) ) );
 lunara_review_import_assert_true( is_wp_error( $unsupported_format ) && 'unsupported_source_format' === $unsupported_format->get_error_code(), 'Legacy binary DOC and unknown source formats must be rejected explicitly.' );
@@ -392,7 +404,7 @@ lunara_review_import_assert_same( hash( 'sha256', $html ), get_post_meta( 60, Lu
 $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $admin     = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-draft-import-admin.js' );
-lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.7.2" ), 'Core must identify the Review importer release.' );
+lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.7.3" ), 'Core must identify the Review importer release.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, "'revisions'" ), 'Review CPT must retain native WordPress revisions.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, '/lunara/v1/review-draft-import/' ), 'Importer REST loading must remain exact-prefix private.' );
 lunara_review_import_assert_true( false === strpos( $admin, 'add_shortcode' ), 'The importer must not create a shortcode dependency.' );
@@ -408,5 +420,6 @@ lunara_review_import_assert_true( false !== strpos( $script, 'source_format' ), 
 lunara_review_import_assert_true( false !== strpos( $script, 'readAsArrayBuffer' ), 'The editor must read Word and Google export packages as bounded binary input.' );
 lunara_review_import_assert_true( false !== strpos( $script, "getData('text/html')" ), 'Rich clipboard HTML from Word and Google Docs must be captured before plain-text fallback.' );
 lunara_review_import_assert_true( false !== strpos( $script, 'normalizeClipboardHtml' ), 'Rich clipboard wrappers must be normalized before the strict HTML parser runs.' );
+lunara_review_import_assert_true( false !== strpos( $script, 'debriefPreviewHtml' ), 'The editor must render the server-generated rich Debrief preview before apply.' );
 
 echo "Review draft import admin regression checks passed.\n";

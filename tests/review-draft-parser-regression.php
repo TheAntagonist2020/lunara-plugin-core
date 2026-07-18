@@ -21,6 +21,7 @@ function lunara_review_parser_assert_true( $condition, $message ) {
     }
 }
 
+require dirname( __DIR__ ) . '/includes/class-lunara-debrief-contract.php';
 require dirname( __DIR__ ) . '/includes/class-lunara-review-draft-parser.php';
 
 $fixture = <<<'HTML'
@@ -73,6 +74,38 @@ lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'onclick
 lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'LUNARA DEBRIEF' ), 'The Debrief marker must not enter article content.' );
 lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'Echo Film' ), 'Debrief pairings must not duplicate into article content.' );
 lunara_review_parser_assert_same( $parsed, Lunara_Review_Draft_Parser::parse( $fixture ), 'Repeated parsing must be byte-for-byte deterministic.' );
+
+$editorial_pairing_formats = str_replace(
+    array(
+        '<em>Echo Film</em> (2001) [tt1111111] -- It carries the central question forward.',
+        '<em>Counter Film</em> (1999) [tt2222222] -- It changes the temperature.',
+        '<em>Career Film</em> (2018) [tt3333333] -- It reveals the artist\'s prior experiment.',
+    ),
+    array(
+        '<em>Echo Film</em> (2001) tt1111111. It carries the central question forward.',
+        '<em>Counter Film</em> (1999) https://www.imdb.com/title/tt2222222/ — It changes the temperature.',
+        '<em>Career Film</em> (2018) — It reveals the artist\'s prior experiment. | IMDb: tt3333333',
+    ),
+    $fixture
+);
+$editorial_formats_parsed = Lunara_Review_Draft_Parser::parse( $editorial_pairing_formats );
+lunara_review_parser_assert_true( $editorial_formats_parsed['valid'], 'Real Lunara, Word, and Google Docs pairing punctuation must parse without manual rewriting.' );
+lunara_review_parser_assert_same( 'Echo Film', $editorial_formats_parsed['pairings']['theme_echo']['title'], 'A bare IMDb ID followed by a period must preserve the pairing title.' );
+lunara_review_parser_assert_same( 'tt2222222', $editorial_formats_parsed['pairings']['counter_program']['imdb_id'], 'A full IMDb URL must normalize to its title ID.' );
+lunara_review_parser_assert_same( "It reveals the artist's prior experiment.", $editorial_formats_parsed['pairings']['career_context']['reason'], 'A trailing labeled IMDb ID must remain outside the editorial reason.' );
+lunara_review_parser_assert_true( false === strpos( $editorial_formats_parsed['content'], 'Echo Film' ), 'Alternate Debrief syntax must still be removed from article blocks.' );
+
+$imdb_in_reason = str_replace(
+    'It carries the central question forward.',
+    'It questions IMDb ratings without mistaking them for criticism.',
+    $fixture
+);
+$imdb_in_reason_parsed = Lunara_Review_Draft_Parser::parse( $imdb_in_reason );
+lunara_review_parser_assert_same(
+    'It questions IMDb ratings without mistaking them for criticism.',
+    $imdb_in_reason_parsed['pairings']['theme_echo']['reason'],
+    'The word IMDb inside an editorial reason must not be mistaken for an ID label.'
+);
 
 $wrapped_debrief = str_replace( '<strong>LUNARA DEBRIEF</strong>', '<p><strong>LUNARA DEBRIEF</strong></p>', $fixture );
 $wrapped_parsed  = Lunara_Review_Draft_Parser::parse( $wrapped_debrief );

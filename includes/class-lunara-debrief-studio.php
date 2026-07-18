@@ -175,6 +175,7 @@ final class Lunara_Debrief_Studio {
         $record     = Lunara_Debrief_Contract::record_from_review( $review_id );
         $validation = Lunara_Debrief_Contract::validate( $record );
         $status     = $record['status'];
+        $uses_legacy_fallback = self::uses_legacy_pairing_fallback( $review_id );
 
         echo '<div class="lunara-debrief-readiness">';
         echo '<div class="lunara-debrief-readiness-head">';
@@ -185,9 +186,9 @@ final class Lunara_Debrief_Studio {
         echo '<span class="lunara-debrief-status is-' . esc_attr( $status ) . '">' . esc_html( ucfirst( $status ) ) . '</span>';
         echo '</div>';
 
-        if ( $validation['complete'] ) {
+        if ( $validation['complete'] && ! $uses_legacy_fallback ) {
             echo '<p class="lunara-debrief-readiness-note is-complete">' . esc_html__( 'All three companion films and editorial reasons are complete.', 'lunara-core' ) . '</p>';
-        } else {
+        } elseif ( ! $validation['complete'] ) {
             $issues = array_merge( $validation['errors'], $validation['warnings'] );
             echo '<div class="lunara-debrief-readiness-note is-incomplete">';
             echo '<strong>' . esc_html__( 'Still needed before Ready:', 'lunara-core' ) . '</strong>';
@@ -199,57 +200,243 @@ final class Lunara_Debrief_Studio {
             echo '</div>';
         }
 
-        echo '<div class="lunara-debrief-preview-grid">';
-        foreach ( $record['pairings'] as $pairing ) {
-            self::render_pairing_card( $pairing );
+        if ( $uses_legacy_fallback ) {
+            echo '<p class="lunara-debrief-readiness-note is-legacy">';
+            echo esc_html__( 'This read-only preview is using retained legacy pairing fields wherever Debrief Studio is still empty. Nothing is migrated or overwritten here.', 'lunara-core' );
+            echo '</p>';
         }
-        echo '</div>';
+
+        echo self::pairing_preview_html( $review_id, $record['pairings'] );
         echo '<p class="description lunara-debrief-preview-caption">' . esc_html__( 'This preview reflects saved fields. Update the Review to refresh it.', 'lunara-core' ) . '</p>';
         echo '</div>';
     }
 
     /**
-     * Render one local-data-only pairing card.
+     * Build the shared rich Pair It With preview for Studio and draft import.
      *
+     * This is deliberately read-only. It may consume theme enrichment helpers
+     * when available, but it always has a local Core fallback.
+     *
+     * @param int          $review_id Owning Review ID.
+     * @param array<mixed> $pairings Canonical or importer pairing rows.
+     * @return string
+     */
+    public static function pairing_preview_html( $review_id, $pairings ) {
+        $review_id = absint( $review_id );
+        $by_role   = array();
+
+        foreach ( is_array( $pairings ) ? $pairings : array() as $key => $pairing ) {
+            if ( ! is_array( $pairing ) ) {
+                $pairing = array( 'legacy_value' => (string) $pairing );
+            }
+
+            $fallback_role = is_string( $key ) ? $key : '';
+            $normalized    = Lunara_Debrief_Contract::normalize_pairing( $pairing, $fallback_role );
+            $role          = $normalized['role'];
+            if ( '' === $role || isset( $by_role[ $role ] ) ) {
+                continue;
+            }
+
+            $film = $normalized['film'];
+            if ( ! empty( $film['movie_id'] ) ) {
+                $canonical = Lunara_Debrief_Contract::movie_reference( $film['movie_id'], $review_id );
+                if ( ! empty( $canonical['movie_id'] ) ) {
+                    $film = $canonical;
+                }
+            } elseif ( ! empty( $film['imdb_title_id'] ) ) {
+                $canonical = Lunara_Debrief_Contract::public_movie_reference_by_imdb( $film['imdb_title_id'], $review_id );
+                if ( ! empty( $canonical['movie_id'] ) ) {
+                    $film = $canonical;
+                }
+            }
+
+            $normalized['film'] = $film;
+            $by_role[ $role ]    = $normalized;
+        }
+
+        foreach ( array_keys( Lunara_Debrief_Contract::roles() ) as $role ) {
+            if ( ! isset( $by_role[ $role ] ) ) {
+                $by_role[ $role ] = Lunara_Debrief_Contract::empty_pairing( $role );
+            }
+        }
+
+        ob_start();
+        echo '<div class="lunara-pair-preview">';
+        echo '<div class="lunara-pair-preview-head">';
+        echo '<strong>' . esc_html__( 'Pair It With Preview', 'lunara-core' ) . '</strong>';
+        echo '<span>' . esc_html__( 'Read-only check for title, poster, IMDb link, and Oscar Ledger status.', 'lunara-core' ) . '</span>';
+        echo '</div>';
+        echo '<div class="lunara-pair-preview-grid">';
+        foreach ( Lunara_Debrief_Contract::roles() as $role => $definition ) {
+            self::render_rich_pairing_card( $review_id, $definition['label'], $by_role[ $role ] );
+        }
+        echo '</div>';
+        echo '</div>';
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Render one rich pairing card using only local data and optional helpers.
+     *
+     * @param int                 $review_id Review ID.
+     * @param string              $role_label Human role label.
      * @param array<string,mixed> $pairing Normalized pairing.
      */
-    private static function render_pairing_card( $pairing ) {
-        $roles      = Lunara_Debrief_Contract::roles();
-        $role       = $pairing['role'];
-        $film       = $pairing['film'];
-        $movie_id   = absint( $film['movie_id'] ?? 0 );
-        $title      = trim( (string) ( $film['title'] ?? '' ) );
-        $year       = trim( (string) ( $film['year'] ?? '' ) );
-        $reason     = trim( (string) $pairing['editorial_reason'] );
-        $poster_id  = $movie_id ? absint( get_post_thumbnail_id( $movie_id ) ) : 0;
-        $role_label = $roles[ $role ]['label'] ?? $role;
+    private static function render_rich_pairing_card( $review_id, $role_label, $pairing ) {
+        $film      = $pairing['film'];
+        $movie_id  = absint( $film['movie_id'] ?? 0 );
+        $raw       = self::pairing_display_value( $pairing );
+        $enriched  = function_exists( 'lunara_parse_pair_it_with_value' )
+            ? lunara_parse_pair_it_with_value( $raw, $review_id )
+            : array();
+        $title     = trim( (string) ( $film['title'] ?? '' ) );
+        $title     = '' !== $title ? $title : trim( (string) ( $enriched['title'] ?? '' ) );
+        $year      = trim( (string) ( $film['year'] ?? '' ) );
+        $year      = '' !== $year ? $year : trim( (string) ( $enriched['year'] ?? '' ) );
+        $imdb_id   = Lunara_Debrief_Contract::normalize_imdb_title_id( $film['imdb_title_id'] ?? '' );
+        $imdb_id   = '' !== $imdb_id ? $imdb_id : Lunara_Debrief_Contract::normalize_imdb_title_id( $enriched['tt'] ?? '' );
+        $reason    = trim( (string) ( $pairing['editorial_reason'] ?? '' ) );
+        $reason    = '' !== $reason ? $reason : trim( (string) ( $enriched['note'] ?? '' ) );
+        $warnings  = isset( $enriched['warnings'] ) && is_array( $enriched['warnings'] ) ? $enriched['warnings'] : array();
+        $poster    = trim( (string) ( $enriched['poster_html'] ?? '' ) );
+        $imdb_href = '' !== $imdb_id ? 'https://www.imdb.com/title/' . $imdb_id . '/' : '';
+        $internal  = trim( (string) ( $enriched['internal_href'] ?? '' ) );
+        $permalink = trim( (string) ( $film['permalink'] ?? '' ) );
 
-        echo '<article class="lunara-debrief-preview-card' . ( $movie_id ? ' has-film' : ' is-empty' ) . '">';
-        echo '<div class="lunara-debrief-preview-media">';
-        if ( $poster_id && function_exists( 'wp_get_attachment_image' ) ) {
-            echo wp_get_attachment_image(
-                $poster_id,
-                'medium',
-                false,
-                array(
-                    'loading'  => 'lazy',
-                    'decoding' => 'async',
-                    'alt'      => '' !== $title ? $title . ' poster' : '',
-                )
-            );
+        if ( '' === $internal && '' !== $imdb_id && function_exists( 'lunara_get_internal_title_reference_url' ) ) {
+            $internal = (string) lunara_get_internal_title_reference_url( $imdb_id, $review_id );
+        }
+
+        if ( '' === $poster && $movie_id && function_exists( 'get_post_thumbnail_id' ) && function_exists( 'wp_get_attachment_image' ) ) {
+            $poster_id = absint( get_post_thumbnail_id( $movie_id ) );
+            if ( $poster_id ) {
+                $poster = wp_get_attachment_image(
+                    $poster_id,
+                    'medium',
+                    false,
+                    array(
+                        'class'    => 'lunara-pair-preview-thumb',
+                        'loading'  => 'lazy',
+                        'decoding' => 'async',
+                        'alt'      => '' !== $title ? $title . ' poster' : '',
+                    )
+                );
+            }
+        }
+
+        $counts = isset( $enriched['counts'] ) && is_array( $enriched['counts'] )
+            ? $enriched['counts']
+            : array( 'noms' => 0, 'wins' => 0 );
+        if ( ! isset( $enriched['counts'] ) && '' !== $imdb_id && function_exists( 'lunara_get_oscar_ledger_counts' ) ) {
+            $counts = lunara_get_oscar_ledger_counts( $imdb_id );
+        }
+        $noms = absint( $counts['noms'] ?? 0 );
+        $wins = absint( $counts['wins'] ?? 0 );
+
+        $title_href = '' !== $internal ? $internal : ( '' !== $permalink ? $permalink : $imdb_href );
+        $link_type  = '';
+        if ( '' !== $internal ) {
+            $enriched_type = trim( (string) ( $enriched['title_href_type'] ?? '' ) );
+            $link_type = in_array( $enriched_type, array( 'review', 'oscar' ), true )
+                ? $enriched_type
+                : ( false !== strpos( $internal, '/reviews/' ) ? 'review' : 'oscar' );
+        } elseif ( '' !== $permalink ) {
+            $link_type = 'film';
+        } elseif ( '' !== $imdb_href ) {
+            $link_type = 'imdb';
+        }
+
+        $is_empty = '' === $title && '' === $imdb_id && '' === $reason;
+        $classes  = array( 'lunara-pair-preview-card' );
+        $classes[] = $is_empty ? 'is-empty' : ( empty( $warnings ) ? 'is-ready' : 'is-warning' );
+
+        echo '<article class="' . esc_attr( implode( ' ', $classes ) ) . '">';
+        echo '<div class="lunara-pair-preview-media">';
+        echo '' !== $poster ? wp_kses_post( $poster ) : esc_html__( 'No poster', 'lunara-core' );
+        echo '</div>';
+        echo '<div>';
+        echo '<p class="lunara-pair-preview-role">' . esc_html( $role_label ) . '</p>';
+        echo '<p class="lunara-pair-preview-title">';
+        $display_title = '' !== $title ? $title . ( '' !== $year ? ' (' . $year . ')' : '' ) : __( 'Not filled yet', 'lunara-core' );
+        if ( '' !== $title_href && ! $is_empty ) {
+            echo '<a href="' . esc_url( $title_href ) . '" target="_blank" rel="noopener noreferrer">' . esc_html( $display_title ) . '</a>';
         } else {
-            echo '<span aria-hidden="true">2:3</span>';
+            echo esc_html( $display_title );
+        }
+        echo '</p>';
+        if ( '' !== $reason ) {
+            echo '<p class="lunara-pair-preview-note">' . esc_html( $reason ) . '</p>';
+        }
+        echo '<div class="lunara-pair-preview-chips">';
+        if ( '' !== $imdb_id ) {
+            echo '<a class="lunara-pair-preview-chip" href="' . esc_url( $imdb_href ) . '" target="_blank" rel="noopener noreferrer">' . esc_html( strtoupper( $imdb_id ) ) . '</a>';
+        }
+        if ( '' !== $poster ) {
+            echo '<span class="lunara-pair-preview-chip">' . esc_html__( 'Poster ready', 'lunara-core' ) . '</span>';
+        }
+        if ( $noms > 0 ) {
+            echo '<span class="lunara-pair-preview-chip">' . esc_html( sprintf( __( 'Oscar Ledger: %1$d noms / %2$d wins', 'lunara-core' ), $noms, $wins ) ) . '</span>';
+        } elseif ( '' !== $imdb_id ) {
+            echo '<span class="lunara-pair-preview-chip is-muted">' . esc_html__( 'No Oscar Ledger data', 'lunara-core' ) . '</span>';
+        }
+        if ( 'review' === $link_type ) {
+            echo '<span class="lunara-pair-preview-chip">' . esc_html__( 'Links to Lunara review', 'lunara-core' ) . '</span>';
+        } elseif ( 'oscar' === $link_type ) {
+            echo '<span class="lunara-pair-preview-chip">' . esc_html__( 'Links to Oscar page', 'lunara-core' ) . '</span>';
+        } elseif ( 'film' === $link_type ) {
+            echo '<span class="lunara-pair-preview-chip">' . esc_html__( 'Links to Lunara film', 'lunara-core' ) . '</span>';
+        } elseif ( 'imdb' === $link_type ) {
+            echo '<span class="lunara-pair-preview-chip is-muted">' . esc_html__( 'IMDb fallback', 'lunara-core' ) . '</span>';
         }
         echo '</div>';
-        echo '<div class="lunara-debrief-preview-copy">';
-        echo '<span class="lunara-debrief-preview-role">' . esc_html( $role_label ) . '</span>';
-        echo '<h4>' . esc_html( '' !== $title ? $title : __( 'Film not selected', 'lunara-core' ) ) . '</h4>';
-        if ( '' !== $year ) {
-            echo '<span class="lunara-debrief-preview-year">' . esc_html( $year ) . '</span>';
+        if ( ! empty( $warnings ) ) {
+            echo '<ul class="lunara-pair-preview-warnings">';
+            foreach ( $warnings as $warning ) {
+                echo '<li>' . esc_html( $warning ) . '</li>';
+            }
+            echo '</ul>';
         }
-        echo '<p>' . esc_html( '' !== $reason ? $reason : __( 'Editorial reason not written yet.', 'lunara-core' ) ) . '</p>';
         echo '</div>';
         echo '</article>';
+    }
+
+    /** Build one theme-compatible pairing value from canonical fields. */
+    private static function pairing_display_value( $pairing ) {
+        $film   = $pairing['film'];
+        $title  = trim( (string) ( $film['title'] ?? '' ) );
+        $year   = trim( (string) ( $film['year'] ?? '' ) );
+        $imdb   = Lunara_Debrief_Contract::normalize_imdb_title_id( $film['imdb_title_id'] ?? '' );
+        $reason = trim( (string) ( $pairing['editorial_reason'] ?? '' ) );
+        if ( ! empty( $pairing['legacy_value'] ) && ( '' === $title || '' === $imdb || '' === $reason ) ) {
+            return trim( (string) $pairing['legacy_value'] );
+        }
+
+        $value  = $title . ( '' !== $year ? ' (' . $year . ')' : '' );
+        $value .= '' !== $reason ? ' — ' . $reason : '';
+        $value .= '' !== $imdb ? ' | IMDb: ' . $imdb : '';
+        return trim( $value );
+    }
+
+    /** Whether saved canonical fields are currently falling back to legacy. */
+    private static function uses_legacy_pairing_fallback( $review_id ) {
+        foreach ( Lunara_Debrief_Contract::roles() as $definition ) {
+            $legacy_value = '';
+            foreach ( $definition['legacy_meta_keys'] as $meta_key ) {
+                $legacy_value = trim( (string) get_post_meta( $review_id, $meta_key, true ) );
+                if ( '' !== $legacy_value ) {
+                    break;
+                }
+            }
+
+            if ( '' !== $legacy_value && (
+                ! absint( get_post_meta( $review_id, $definition['movie_field'], true ) )
+                || '' === trim( (string) get_post_meta( $review_id, $definition['reason_field'], true ) )
+            ) ) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

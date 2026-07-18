@@ -141,81 +141,164 @@
     background: #edf8f2;
 }
 
+.lunara-debrief-readiness-note.is-legacy {
+    border-left-color: #9a7a2f;
+    background: #fbf8ef;
+    color: #574719;
+}
+
 .lunara-debrief-readiness-note ul {
     margin: 7px 0 0 18px;
 }
 
-.lunara-debrief-preview-grid {
+.lunara-pair-preview {
+    margin: 18px;
+    overflow: hidden;
+    border: 1px solid #d8c38a;
+    border-radius: 8px;
+    background: #071523;
+    color: #f7f1dd;
+}
+
+.lunara-pair-preview-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(216, 195, 138, 0.28);
+    background: rgba(216, 195, 138, 0.08);
+}
+
+.lunara-pair-preview-head strong {
+    color: #e4c875;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.lunara-pair-preview-head span {
+    color: #b8c3cf;
+    font-size: 12px;
+}
+
+.lunara-pair-preview-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-    padding: 18px;
+    padding: 14px;
 }
 
-.lunara-debrief-preview-card {
+.lunara-pair-preview-card {
     display: grid;
-    grid-template-columns: 82px minmax(0, 1fr);
+    grid-template-columns: 74px minmax(0, 1fr);
     gap: 12px;
     min-width: 0;
-    min-height: 142px;
-    border: 1px solid #cbd3d8;
-    background: #fff;
+    min-height: 122px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.045);
+    box-sizing: border-box;
 }
 
-.lunara-debrief-preview-card.is-empty {
-    border-style: dashed;
-    background: #f4f6f7;
+.lunara-pair-preview-card.is-warning {
+    border-color: rgba(214, 126, 70, 0.85);
 }
 
-.lunara-debrief-preview-media {
-    display: grid;
-    width: 82px;
+.lunara-pair-preview-card.is-empty {
+    opacity: 0.72;
+}
+
+.lunara-pair-preview-media {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 74px;
     aspect-ratio: 2 / 3;
-    place-items: center;
     overflow: hidden;
-    background: #dfe5e8;
-    color: #687983;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.07);
+    color: #8f9aa7;
     font-size: 11px;
+    text-align: center;
 }
 
-.lunara-debrief-preview-media img {
+.lunara-pair-preview-media img,
+.lunara-pair-preview-thumb {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-.lunara-debrief-preview-copy {
-    min-width: 0;
-    padding: 11px 11px 11px 0;
-}
-
-.lunara-debrief-preview-role {
-    display: block;
-    color: #876921;
-    font-size: 10px;
+.lunara-pair-preview-role {
+    margin: 0 0 4px;
+    color: #e4c875;
+    font-size: 11px;
     font-weight: 700;
+    letter-spacing: 0;
     text-transform: uppercase;
 }
 
-.lunara-debrief-preview-copy h4 {
-    margin: 4px 0 1px;
-    color: #172b3a;
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 16px;
+.lunara-pair-preview-title {
+    margin: 0 0 5px;
+    color: #fff;
+    font-size: 14px;
+    line-height: 1.25;
+}
+
+.lunara-pair-preview-title a {
+    color: #8ab4ff;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.lunara-pair-preview-note {
+    margin: 0 0 8px;
+    color: #c8d0d8;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.lunara-pair-preview-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: 7px;
+}
+
+.lunara-pair-preview-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 2px 7px;
+    border: 1px solid rgba(228, 200, 117, 0.42);
+    border-radius: 999px;
+    color: #f2d986;
+    font-size: 11px;
     line-height: 1.2;
+    text-decoration: none;
 }
 
-.lunara-debrief-preview-year {
-    color: #64757f;
-    font-size: 12px;
+.lunara-pair-preview-chip:hover,
+.lunara-pair-preview-chip:focus {
+    color: #fff3b8;
 }
 
-.lunara-debrief-preview-copy p {
+.lunara-pair-preview-chip.is-muted {
+    border-color: rgba(255, 255, 255, 0.18);
+    color: #aeb8c4;
+}
+
+.lunara-pair-preview-warnings {
     margin: 8px 0 0;
-    color: #445762;
+    padding-left: 16px;
+    color: #ffb07b;
     font-size: 12px;
-    line-height: 1.45;
+}
+
+.lunara-pair-preview-warnings li {
+    margin: 0 0 4px;
 }
 
 .lunara-debrief-preview-caption {
@@ -223,8 +306,8 @@
     padding: 0 18px 16px;
 }
 
-@media (max-width: 1200px) {
-    .lunara-debrief-preview-grid {
+@media (max-width: 700px) {
+    .lunara-pair-preview-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -237,6 +320,14 @@
     .lunara-debrief-source,
     .lunara-debrief-readiness-head {
         align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .lunara-pair-preview {
+        margin: 12px;
+    }
+
+    .lunara-pair-preview-head {
         flex-direction: column;
     }
 }

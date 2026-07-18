@@ -69,6 +69,13 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.7.3` gives Debrief Studio and the draft importer one shared rich
+Pair It With preview. Saved canonical fields and retained legacy pairings can
+show the poster, direct IMDb link, Oscar Ledger status, internal destination,
+and editorial reason without migrating data during an editor view. The parser
+also accepts the bracketed, bare-ID, full-IMDb-URL, and trailing-ID formats
+commonly produced by Lunara HTML, Word, and Google Docs drafts.
+
 Core `0.7.2` adds a draft-only Review editor importer for reference HTML files,
 Word `.docx` exports, Google Docs HTML `.zip` exports, and pasted rich HTML.
 Preview is read-only. Apply requires an editable saved draft, an empty
