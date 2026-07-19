@@ -16,10 +16,18 @@ final class Lunara_Review_Draft_Import_Admin {
     const SOURCE_META    = '_lunara_review_import_record';
     const HASH_META      = '_lunara_review_import_source_hash';
 
+    /**
+     * Guard internal content cleanup from re-entering the save hook.
+     *
+     * @var bool
+     */
+    private static $harvesting_embedded_debrief = false;
+
     /** Register private editor hooks. */
     public static function init() {
         add_action( 'add_meta_boxes_review', array( __CLASS__, 'add_meta_box' ) );
         add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+        add_action( 'save_post_review', array( __CLASS__, 'harvest_embedded_debrief_on_save' ), 40, 3 );
     }
 
     /** Add the importer beneath the normal Review editor. */
@@ -353,6 +361,122 @@ final class Lunara_Review_Draft_Import_Admin {
                 'resolutions'     => $resolutions,
             )
         );
+    }
+
+    /**
+     * Harvest a pasted inline Debrief from Classic Editor saves.
+     *
+     * The full importer remains the safest path for new drafts. This hook is
+     * deliberately narrow: it runs only when saved Review content still
+     * contains the LUNARA DEBRIEF marker, fills empty Debrief fields, and then
+     * removes the inline duplicate from the article body.
+     *
+     * @param int     $review_id Review post ID.
+     * @param WP_Post $post      Saved Review post.
+     * @param bool    $update    Whether this is an existing post update.
+     * @return void
+     */
+    public static function harvest_embedded_debrief_on_save( $review_id, $post, $update ) {
+        unset( $update );
+
+        $review_id = absint( $review_id );
+        if ( self::$harvesting_embedded_debrief || $review_id <= 0 || ! ( $post instanceof WP_Post ) ) {
+            return;
+        }
+
+        if ( 'review' !== $post->post_type || '' === trim( (string) $post->post_content ) ) {
+            return;
+        }
+
+        if ( false === stripos( (string) $post->post_content, 'LUNARA DEBRIEF' ) ) {
+            return;
+        }
+
+        if ( function_exists( 'wp_is_post_autosave' ) && wp_is_post_autosave( $review_id ) ) {
+            return;
+        }
+
+        if ( function_exists( 'wp_is_post_revision' ) && wp_is_post_revision( $review_id ) ) {
+            return;
+        }
+
+        if ( ! current_user_can( 'edit_post', $review_id ) ) {
+            return;
+        }
+
+        if ( ! function_exists( 'get_field' ) || ! function_exists( 'update_field' ) ) {
+            return;
+        }
+
+        $parsed = Lunara_Review_Draft_Parser::parse_embedded_debrief( $post->post_content );
+        if ( empty( $parsed['valid'] ) ) {
+            return;
+        }
+
+        $resolutions = self::apply_debrief_fields( $review_id, $parsed['pairings'] );
+        if ( is_wp_error( $resolutions ) ) {
+            return;
+        }
+
+        $score = '';
+        if ( preg_match( '/^(\d+(?:\.\d+)?)/', (string) $parsed['score'], $match ) ) {
+            $score = $match[1];
+        }
+
+        $fields = array(
+            '_lunara_score' => $score,
+            '_lunara_where' => $parsed['where_to_watch'],
+        );
+
+        foreach ( $fields as $key => $value ) {
+            if ( '' !== trim( (string) $value ) && '' === trim( (string) get_post_meta( $review_id, $key, true ) ) ) {
+                $written = self::update_meta_verified( $review_id, $key, sanitize_textarea_field( $value ) );
+                if ( is_wp_error( $written ) ) {
+                    return;
+                }
+            }
+        }
+
+        $clean_content = (string) $parsed['content'];
+        if ( (string) $post->post_content !== $clean_content ) {
+            self::$harvesting_embedded_debrief = true;
+            $updated = wp_update_post(
+                wp_slash(
+                    array(
+                        'ID'           => $review_id,
+                        'post_content' => $clean_content,
+                    )
+                ),
+                true
+            );
+            self::$harvesting_embedded_debrief = false;
+
+            if ( is_wp_error( $updated ) ) {
+                return;
+            }
+        }
+
+        self::update_meta_verified(
+            $review_id,
+            self::SOURCE_META,
+            array(
+                'version'      => 1,
+                'status'       => 'complete',
+                'source_format' => 'classic_editor_embedded_debrief',
+                'source_hash'  => hash( 'sha256', (string) $post->post_content ),
+                'completed_at' => current_time( 'mysql', true ),
+                'imported_by'  => get_current_user_id(),
+                'warnings'     => $parsed['warnings'],
+                'resolutions'  => $resolutions,
+            )
+        );
+
+        if ( method_exists( 'Lunara_Core', 'instance' ) ) {
+            $core = Lunara_Core::instance();
+            if ( is_object( $core ) && method_exists( $core, 'sync_review_archive_terms' ) ) {
+                $core->sync_review_archive_terms( $review_id );
+            }
+        }
     }
 
     /** Parse and validate a request HTML or local document export. */

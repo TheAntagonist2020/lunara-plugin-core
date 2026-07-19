@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.7.4
+ * Version: 0.8.1
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.7.4' );
+define( 'LUNARA_CORE_VERSION', '0.8.1' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );

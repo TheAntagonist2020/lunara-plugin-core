@@ -69,6 +69,14 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.1` adds Classic Editor Debrief auto-harvesting. When a saved Review
+body contains a valid inline `LUNARA DEBRIEF` module, Core fills empty Debrief
+Studio fields, preserves existing curated selections, resolves published local
+Movie records by IMDb ID, removes the duplicate inline Debrief from the article
+body, and leaves an audit record. This supports the fast editorial workflow:
+paste a finished HTML/Markdown-derived review once, save, and let Core port the
+three companion-film choices into structured fields.
+
 Core `0.7.4` keeps the Review-owned Debrief Studio available whenever ACF Pro
 and the Film Dossier post type are present, even if a later entity-graph filter
 changes after Core bootstrap. The Studio now owns its ACF field-group
