@@ -32,6 +32,9 @@ $GLOBALS['lunara_studio_test'] = array(
         99 => array( '_lunara_imdb_title_id' => 'tt0000010', '_lunara_year' => '2024' ),
     ),
     'validation_errors' => array(),
+    'entity_graph_enabled' => true,
+    'hooks' => array(),
+    'field_groups' => array(),
 );
 
 function __( $text ) {
@@ -39,10 +42,24 @@ function __( $text ) {
 }
 
 function apply_filters( $hook, $value ) {
+    if ( 'lunara_enable_entity_graph' === $hook ) {
+        return $GLOBALS['lunara_studio_test']['entity_graph_enabled'];
+    }
+
     return $value;
 }
 
-function acf_add_local_field_group() {}
+function add_action( $hook, $callback ) {
+    $GLOBALS['lunara_studio_test']['hooks'][ $hook ][] = $callback;
+}
+
+function acf_add_local_field_group( $group ) {
+    $GLOBALS['lunara_studio_test']['field_groups'][ $group['key'] ] = $group;
+}
+
+function post_type_exists( $post_type ) {
+    return 'movie' === $post_type;
+}
 
 function esc_html__( $text ) {
     return htmlspecialchars( $text, ENT_QUOTES, 'UTF-8' );
@@ -203,6 +220,24 @@ function lunara_studio_validate( $status, $movie_ids, $reasons, $source_imdb = '
 
 require dirname( __DIR__ ) . '/includes/class-lunara-debrief-contract.php';
 require dirname( __DIR__ ) . '/includes/class-lunara-debrief-studio.php';
+
+$GLOBALS['lunara_studio_test']['entity_graph_enabled'] = false;
+lunara_studio_assert_true(
+    Lunara_Debrief_Studio::is_available(),
+    'A late entity-graph filter must not hide Debrief Studio when ACF and the Film Dossier post type are available.'
+);
+$GLOBALS['lunara_studio_test']['entity_graph_enabled'] = true;
+
+Lunara_Debrief_Studio::init();
+$acf_init_callbacks = $GLOBALS['lunara_studio_test']['hooks']['acf/init'] ?? array();
+lunara_studio_assert_true(
+    in_array( array( 'Lunara_Debrief_Studio', 'register_field_group' ), $acf_init_callbacks, true ),
+    'Debrief Studio must register its own ACF group instead of relying on the broader entity module.'
+);
+call_user_func( array( 'Lunara_Debrief_Studio', 'register_field_group' ) );
+$studio_group = $GLOBALS['lunara_studio_test']['field_groups']['group_lunara_review_trinity'] ?? array();
+lunara_studio_assert_same( 'Debrief Studio', $studio_group['title'] ?? '', 'The Review-owned Studio field group was not registered.' );
+lunara_studio_assert_same( 'review', $studio_group['location'][0][0]['value'] ?? '', 'Debrief Studio must remain scoped to the Review post type.' );
 
 $fields = Lunara_Debrief_Contract::acf_fields();
 lunara_studio_assert_same( 15, count( $fields ), 'The Studio must expose overview, three fixed lanes, and preview fields.' );

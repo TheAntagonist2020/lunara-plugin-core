@@ -84,7 +84,7 @@ final class Lunara_Graph_Growth {
 				array(
 					'post_type'   => 'movie',
 					'post_status' => 'draft',
-					'post_title'  => sanitize_text_field( get_the_title( $post ) ),
+					'post_title'  => self::dossier_title_from_review( $post ),
 					'meta_input'  => array( 'imdb_title_id' => $tt ),
 				),
 				true
@@ -125,6 +125,20 @@ final class Lunara_Graph_Growth {
 		} finally {
 			Lunara_Movie_Identity_Lock::release( $lock );
 		}
+	}
+
+	/**
+	 * Keep the film title while dropping Lunara's editorial headline argument.
+	 *
+	 * @param WP_Post $post Source Review.
+	 * @return string
+	 */
+	private static function dossier_title_from_review( $post ) {
+		$review_title = sanitize_text_field( get_the_title( $post ) );
+		$parts        = preg_split( '/\s+(?:\x{2014}|\x{2013}|\|)\s+/u', $review_title, 2 );
+		$film_title   = trim( (string) ( $parts[0] ?? '' ) );
+
+		return '' !== $film_title ? $film_title : $review_title;
 	}
 
 	/**

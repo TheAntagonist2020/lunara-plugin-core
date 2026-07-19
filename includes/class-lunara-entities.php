@@ -410,23 +410,5 @@ final class Lunara_Entities {
             )
         );
 
-        acf_add_local_field_group(
-            array(
-                'key'    => 'group_lunara_review_trinity',
-                'title'  => 'Debrief Studio',
-                'fields' => Lunara_Debrief_Contract::acf_fields(),
-                'location' => array(
-                    array(
-                        array(
-                            'param'    => 'post_type',
-                            'operator' => '==',
-                            'value'    => 'review',
-                        ),
-                    ),
-                ),
-                'position' => 'normal',
-                'style'    => 'default',
-            )
-        );
     }
 }
