@@ -84,6 +84,60 @@ final class Lunara_Review_Draft_Parser {
     }
 
     /**
+     * Extract only an embedded Debrief module from saved editor content.
+     *
+     * This is intentionally lighter than the full draft importer: a Classic
+     * Editor save may already have a title, metadata, and article body. When
+     * the body includes the fixed LUNARA DEBRIEF block, harvest only those
+     * fields and return the article content with the inline module removed.
+     *
+     * @param mixed $html Saved Review body HTML.
+     * @return array<string,mixed>
+     */
+    public static function parse_embedded_debrief( $html ) {
+        $result = self::empty_result();
+
+        if ( ! is_string( $html ) ) {
+            $result['errors'][] = 'invalid_input_type';
+            return self::finish( $result );
+        }
+
+        $html = preg_replace( '/^\xEF\xBB\xBF/', '', $html );
+        $html = str_replace( array( "\r\n", "\r" ), "\n", $html );
+
+        if ( '' === trim( $html ) ) {
+            $result['errors'][] = 'empty_input';
+            return self::finish( $result );
+        }
+
+        if ( strlen( $html ) > self::MAX_INPUT_BYTES ) {
+            $result['errors'][] = 'input_too_large';
+            return self::finish( $result );
+        }
+
+        if ( false !== strpos( $html, "\0" ) || preg_match( '/<\s*(script|style|iframe)\b/i', $html ) ) {
+            $result['errors'][] = 'unsafe_element';
+            return self::finish( $result );
+        }
+
+        list( $article_html, $debrief_html ) = self::split_debrief( $html );
+
+        if ( '' === $debrief_html ) {
+            $result['errors'][] = 'missing_debrief';
+            return self::finish( $result );
+        }
+
+        self::extract_debrief( $debrief_html, $result );
+
+        $article_html      = preg_replace( '/\s*<hr\b[^>]*\/?\s*>\s*$/i', '', $article_html );
+        $result['content'] = rtrim( $article_html );
+
+        self::validate_debrief_only_result( $result );
+
+        return self::finish( $result );
+    }
+
+    /**
      * Build the exact stable response shape.
      *
      * @return array<string,mixed>
@@ -777,6 +831,33 @@ final class Lunara_Review_Draft_Parser {
         }
         if ( '' === $result['where_to_watch'] ) {
             $result['errors'][] = 'missing_where_to_watch';
+        }
+
+        foreach ( array( 'theme_echo', 'counter_program', 'career_context' ) as $role ) {
+            $pairing = $result['pairings'][ $role ];
+            if ( '' === $pairing['title'] || 0 === $pairing['year'] || '' === $pairing['imdb_id'] || '' === $pairing['reason'] ) {
+                $result['errors'][] = 'missing_pairing_' . $role;
+            } elseif ( $pairing['year'] < 1888 || $pairing['year'] > 2100 ) {
+                $result['errors'][] = 'invalid_pairing_year_' . $role;
+            }
+        }
+    }
+
+    /**
+     * Validate the Debrief-only contract used by Classic Editor auto-harvest.
+     *
+     * @param array<string,mixed> $result Parser result.
+     * @return void
+     */
+    private static function validate_debrief_only_result( &$result ) {
+        if ( '' === $result['score'] ) {
+            $result['warnings'][] = 'missing_score';
+        } elseif ( ! preg_match( '/^(?:[0-4](?:\.5)?|5(?:\.0)?)(?:\s*\/\s*5)?$/', $result['score'] ) ) {
+            $result['errors'][] = 'invalid_score';
+        }
+
+        if ( '' === $result['where_to_watch'] ) {
+            $result['warnings'][] = 'missing_where_to_watch';
         }
 
         foreach ( array( 'theme_echo', 'counter_program', 'career_context' ) as $role ) {

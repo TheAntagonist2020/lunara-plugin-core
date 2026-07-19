@@ -113,6 +113,25 @@ lunara_review_parser_assert_true( $wrapped_parsed['valid'], 'Word-style paragrap
 lunara_review_parser_assert_same( 'Echo Film', $wrapped_parsed['pairings']['theme_echo']['title'], 'A Debrief marker wrapped in a paragraph must still expose the Theme Echo.' );
 lunara_review_parser_assert_true( false === strpos( $wrapped_parsed['content'], 'LUNARA DEBRIEF' ), 'A wrapped Debrief marker must remain outside article content.' );
 
+$embedded_debrief = <<<'HTML'
+<p>This Review was written directly in the Classic Editor.</p>
+<hr>
+<p><strong>LUNARA DEBRIEF</strong></p>
+<ul>
+<li><strong>Score:</strong> 4.5/5</li>
+<li><strong>Where to Watch:</strong> Theatrical | Streaming</li>
+<li><strong>Theme Echo:</strong> <em>Echo Film</em> (2001) [tt1111111] -- It carries the central question forward.</li>
+<li><strong>Counter-Program:</strong> <em>Counter Film</em> (1999) [tt2222222] -- It changes the temperature.</li>
+<li><strong>Career Context:</strong> <em>Career Film</em> (2018) [tt3333333] -- It reveals the artist's prior experiment.</li>
+</ul>
+HTML;
+$embedded_parsed = Lunara_Review_Draft_Parser::parse_embedded_debrief( $embedded_debrief );
+lunara_review_parser_assert_true( $embedded_parsed['valid'], 'A Classic Editor body with only an embedded Debrief must parse without the full import header.' );
+lunara_review_parser_assert_same( 'Echo Film', $embedded_parsed['pairings']['theme_echo']['title'], 'Embedded Debrief Theme Echo must parse.' );
+lunara_review_parser_assert_same( '4.5/5', $embedded_parsed['score'], 'Embedded Debrief score must parse.' );
+lunara_review_parser_assert_true( false === strpos( $embedded_parsed['content'], 'LUNARA DEBRIEF' ), 'Embedded Debrief cleanup must remove the inline marker from body content.' );
+lunara_review_parser_assert_true( false === strpos( $embedded_parsed['content'], '<hr' ), 'Embedded Debrief cleanup must remove a trailing separator before the module.' );
+
 $unterminated_metadata = preg_replace( '/-->\s*$/', '', $fixture );
 $unterminated_parsed   = Lunara_Review_Draft_Parser::parse( $unterminated_metadata );
 lunara_review_parser_assert_true( $unterminated_parsed['valid'], 'An EOF metadata comment without a closing delimiter must remain valid.' );

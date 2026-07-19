@@ -8,7 +8,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'LUNARA_CORE_DIR', dirname( __DIR__ ) . '/' );
 define( 'LUNARA_CORE_URL', 'https://example.test/wp-content/plugins/lunara-core/' );
-define( 'LUNARA_CORE_VERSION', '0.7.4' );
+define( 'LUNARA_CORE_VERSION', '0.8.1' );
 
 $GLOBALS['lunara_review_import_test'] = array(
     'posts' => array(
@@ -22,6 +22,13 @@ $GLOBALS['lunara_review_import_test'] = array(
         50 => array( 'post_type' => 'review', 'post_status' => 'draft', 'post_title' => '', 'post_content' => '', 'post_excerpt' => '' ),
         60 => array( 'post_type' => 'review', 'post_status' => 'draft', 'post_title' => '', 'post_content' => '', 'post_excerpt' => '' ),
         70 => array( 'post_type' => 'review', 'post_status' => 'draft', 'post_title' => '', 'post_content' => '', 'post_excerpt' => '' ),
+        80 => array(
+            'post_type'    => 'review',
+            'post_status'  => 'draft',
+            'post_title'   => 'Classic Paste',
+            'post_content' => '<p>Classic editor prose.</p><hr><p><strong>LUNARA DEBRIEF</strong></p><ul><li><strong>Score:</strong> 4.5/5</li><li><strong>Where to Watch:</strong> Theatrical | Streaming</li><li><strong>Theme Echo:</strong> <em>The Fog of War</em> (2003) [tt0317910] -- It carries the moral question forward.</li><li><strong>Counter-Program:</strong> <em>Godzilla</em> (1954) [tt0047034] -- It tells the story from beneath the bomb.</li><li><strong>Career Context:</strong> <em>Dunkirk</em> (2017) [tt5013056] -- It reveals Nolan\'s earlier experiment with war as sensation.</li></ul>',
+            'post_excerpt' => '',
+        ),
     ),
     'meta'                 => array(),
     'acf'                  => array(),
@@ -107,6 +114,8 @@ function current_time() { return '2026-07-13 01:02:03'; }
 function get_edit_post_link( $post_id ) { return 'https://example.test/wp-admin/post.php?post=' . (int) $post_id; }
 function rest_ensure_response( $value ) { return $value; }
 function is_wp_error( $value ) { return $value instanceof WP_Error; }
+function wp_is_post_autosave() { return false; }
+function wp_is_post_revision() { return false; }
 function esc_attr( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES, 'UTF-8' ); }
 function esc_html( $value ) { return htmlspecialchars( (string) $value, ENT_QUOTES, 'UTF-8' ); }
 function esc_html_e( $value ) { echo esc_html( $value ); }
@@ -401,10 +410,21 @@ lunara_review_import_assert_same( 7, substr_count( $GLOBALS['lunara_review_impor
 lunara_review_import_assert_same( 'complete', get_post_meta( 60, Lunara_Review_Draft_Import_Admin::SOURCE_META, true )['status'], 'Recovery must promote the source record to complete.' );
 lunara_review_import_assert_same( hash( 'sha256', $html ), get_post_meta( 60, Lunara_Review_Draft_Import_Admin::HASH_META, true ), 'Only a verified complete recovery may mark the source hash.' );
 
+Lunara_Review_Draft_Import_Admin::harvest_embedded_debrief_on_save( 80, get_post( 80 ), true );
+lunara_review_import_assert_true( false === strpos( $GLOBALS['lunara_review_import_test']['posts'][80]['post_content'], 'LUNARA DEBRIEF' ), 'Classic Editor save harvesting must remove the inline Debrief duplicate from article content.' );
+lunara_review_import_assert_true( false === strpos( $GLOBALS['lunara_review_import_test']['posts'][80]['post_content'], 'The Fog of War' ), 'Classic Editor save harvesting must keep companion films outside article prose.' );
+lunara_review_import_assert_same( '4.5', get_post_meta( 80, '_lunara_score', true ), 'Classic Editor embedded Debrief score must fill an empty Review score.' );
+lunara_review_import_assert_same( 'Theatrical | Streaming', get_post_meta( 80, '_lunara_where', true ), 'Classic Editor embedded Debrief Where to Watch must fill an empty Review field.' );
+lunara_review_import_assert_same( 101, $GLOBALS['lunara_review_import_test']['acf'][80]['field_lunara_review_theme_echo_movie'], 'Classic Editor embedded Debrief must populate a published Theme Echo relation.' );
+lunara_review_import_assert_same( 103, $GLOBALS['lunara_review_import_test']['acf'][80]['field_lunara_review_career_context_movie'], 'Classic Editor embedded Debrief must populate a published Career Context relation.' );
+lunara_review_import_assert_true( ! isset( $GLOBALS['lunara_review_import_test']['acf'][80]['field_lunara_review_counter_program_movie'] ), 'Classic Editor embedded Debrief must not invent a relation for a missing Movie.' );
+lunara_review_import_assert_same( 'complete', get_post_meta( 80, Lunara_Review_Draft_Import_Admin::SOURCE_META, true )['status'], 'Classic Editor embedded Debrief harvest must leave an audit record.' );
+lunara_review_import_assert_true( in_array( 80, $GLOBALS['lunara_review_import_test']['sync_calls'], true ), 'Classic Editor embedded Debrief harvest must sync archive terms after filling fields.' );
+
 $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $admin     = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-draft-import-admin.js' );
-lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.7.4" ), 'Core must identify the Debrief Studio availability repair release.' );
+lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.1" ), 'Core must identify the Classic Editor Debrief auto-harvest release.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, "'revisions'" ), 'Review CPT must retain native WordPress revisions.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, '/lunara/v1/review-draft-import/' ), 'Importer REST loading must remain exact-prefix private.' );
 lunara_review_import_assert_true( false === strpos( $admin, 'add_shortcode' ), 'The importer must not create a shortcode dependency.' );
@@ -421,5 +441,7 @@ lunara_review_import_assert_true( false !== strpos( $script, 'readAsArrayBuffer'
 lunara_review_import_assert_true( false !== strpos( $script, "getData('text/html')" ), 'Rich clipboard HTML from Word and Google Docs must be captured before plain-text fallback.' );
 lunara_review_import_assert_true( false !== strpos( $script, 'normalizeClipboardHtml' ), 'Rich clipboard wrappers must be normalized before the strict HTML parser runs.' );
 lunara_review_import_assert_true( false !== strpos( $script, 'debriefPreviewHtml' ), 'The editor must render the server-generated rich Debrief preview before apply.' );
+lunara_review_import_assert_true( false !== strpos( $admin, 'harvest_embedded_debrief_on_save' ), 'Classic Editor saves must auto-harvest embedded Debrief modules.' );
+lunara_review_import_assert_true( false !== strpos( $admin, 'parse_embedded_debrief' ), 'Classic Editor auto-harvest must use the Debrief-only parser.' );
 
 echo "Review draft import admin regression checks passed.\n";
