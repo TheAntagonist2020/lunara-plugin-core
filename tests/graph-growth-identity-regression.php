@@ -237,13 +237,13 @@ lunara_graph_assert_true(
 );
 
 $GLOBALS['lunara_graph_test']['review_meta'][23]['_lunara_imdb_title_id'] = 'Candidate tt123456789';
-$GLOBALS['lunara_graph_test']['titles'][23] = '  <b>New Film</b>  ';
+$GLOBALS['lunara_graph_test']['titles'][23] = '  <b>New Film</b> — The Review Headline Argument  ';
 Lunara_Graph_Growth::maybe_grow_on_publish( 'publish', 'draft', new WP_Post( 23, 'review' ) );
 lunara_graph_assert_same( 1, count( $GLOBALS['lunara_graph_test']['insertions'] ), 'An unknown nine-digit IMDb ID must create one draft Movie.' );
 
 $created_id = $GLOBALS['lunara_graph_test']['insertions'][0];
 lunara_graph_assert_same( 'draft', $GLOBALS['lunara_graph_test']['posts'][ $created_id ]['post_status'], 'Graph-grown Movies must remain drafts.' );
-lunara_graph_assert_same( 'New Film', $GLOBALS['lunara_graph_test']['posts'][ $created_id ]['post_title'], 'Graph growth must sanitize the Review title.' );
+lunara_graph_assert_same( 'New Film', $GLOBALS['lunara_graph_test']['posts'][ $created_id ]['post_title'], 'Graph growth must keep only the film title, not the Review headline argument.' );
 lunara_graph_assert_same( 'tt123456789', $GLOBALS['lunara_graph_test']['meta'][ $created_id ]['imdb_title_id'], 'Graph growth must store the canonical IMDb ID.' );
 lunara_graph_assert_same( 23, $GLOBALS['lunara_graph_test']['meta'][ $created_id ]['_lunara_auto_grown_from'], 'Graph growth must retain the source Review ID.' );
 

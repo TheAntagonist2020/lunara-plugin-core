@@ -69,6 +69,14 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.7.4` keeps the Review-owned Debrief Studio available whenever ACF Pro
+and the Film Dossier post type are present, even if a later entity-graph filter
+changes after Core bootstrap. The Studio now owns its ACF field-group
+registration, preventing the Classic Editor from falling back to duplicate
+legacy pairing inputs while Film Dossiers remain available. Newly auto-grown
+draft dossiers now keep the film title without copying the Review headline's
+editorial argument.
+
 Core `0.7.3` gives Debrief Studio and the draft importer one shared rich
 Pair It With preview. Saved canonical fields and retained legacy pairings can
 show the poster, direct IMDb link, Oscar Ledger status, internal destination,

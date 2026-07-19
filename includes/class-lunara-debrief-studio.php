@@ -11,6 +11,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 final class Lunara_Debrief_Studio {
 
+    const FIELD_GROUP_KEY = 'group_lunara_review_trinity';
+
     /**
      * Whether the structured Studio can replace the legacy text inputs.
      *
@@ -18,13 +20,15 @@ final class Lunara_Debrief_Studio {
      */
     public static function is_available() {
         return function_exists( 'acf_add_local_field_group' )
-            && (bool) apply_filters( 'lunara_enable_entity_graph', true );
+            && function_exists( 'post_type_exists' )
+            && post_type_exists( 'movie' );
     }
 
     /**
      * Register admin-only Studio hooks.
      */
     public static function init() {
+        add_action( 'acf/init', array( __CLASS__, 'register_field_group' ) );
         add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
         add_action( 'acf/validate_save_post', array( __CLASS__, 'validate_submission' ) );
         add_action(
@@ -34,6 +38,34 @@ final class Lunara_Debrief_Studio {
         add_action(
             'acf/render_field/key=' . Lunara_Debrief_Contract::FIELD_PREVIEW_KEY,
             array( __CLASS__, 'render_preview' )
+        );
+    }
+
+    /**
+     * Register the Review-owned Studio independently from the entity module.
+     */
+    public static function register_field_group() {
+        if ( ! function_exists( 'acf_add_local_field_group' ) ) {
+            return;
+        }
+
+        acf_add_local_field_group(
+            array(
+                'key'    => self::FIELD_GROUP_KEY,
+                'title'  => 'Debrief Studio',
+                'fields' => Lunara_Debrief_Contract::acf_fields(),
+                'location' => array(
+                    array(
+                        array(
+                            'param'    => 'post_type',
+                            'operator' => '==',
+                            'value'    => 'review',
+                        ),
+                    ),
+                ),
+                'position' => 'normal',
+                'style'    => 'default',
+            )
         );
     }
 
