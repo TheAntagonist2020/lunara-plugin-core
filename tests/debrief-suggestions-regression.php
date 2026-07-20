@@ -222,6 +222,28 @@ class WP_CLI {
     public static function add_command() {}
 }
 
+class Lunara_Suggestion_Fixture_Gateway {
+    public $calls = 0;
+
+    private $result;
+
+    private $throws;
+
+    public function __construct( $result = array(), $throws = false ) {
+        $this->result = $result;
+        $this->throws = $throws;
+    }
+
+    public function get_candidate_by_imdb( $imdb_id ) {
+        ++$this->calls;
+        if ( $this->throws ) {
+            throw new RuntimeException( 'fixture provider failure for ' . $imdb_id );
+        }
+
+        return $this->result;
+    }
+}
+
 require dirname( __DIR__ ) . '/includes/class-lunara-debrief-contract.php';
 require dirname( __DIR__ ) . '/includes/class-lunara-debrief-suggestions.php';
 require dirname( __DIR__ ) . '/includes/class-lunara-debrief-cli.php';
@@ -288,6 +310,72 @@ $pool_query_count_after_sparse = count( array_filter( $GLOBALS['lunara_suggestio
     return 201 === (int) ( $query['posts_per_page'] ?? 0 );
 } ) );
 lunara_suggestion_assert_same( $pool_query_count_before_sparse, $pool_query_count_after_sparse, 'Sparse sources must abstain before a candidate-pool query.' );
+
+$enrichment_gateway = new Lunara_Suggestion_Fixture_Gateway(
+    array(
+        'directors' => array(
+            array( 'name' => ' Director One ' ),
+            array( 'name' => 'DIRECTOR ONE' ),
+            array( 'name' => '' ),
+            array( 'id' => 17 ),
+            17,
+            null,
+        ),
+    )
+);
+$enriched = Lunara_Debrief_Suggestions::for_review(
+    98,
+    array( 'role' => 'career_context' ),
+    $enrichment_gateway
+);
+lunara_suggestion_assert_same( 'ready', $enriched['roles']['career_context']['status'], 'A matching provider director must unlock sparse Career Context.' );
+lunara_suggestion_assert_same( 1, $enrichment_gateway->calls, 'Sparse Career Context must call the injected provider exactly once.' );
+lunara_suggestion_assert_same( array( 100 ), $enriched['source_signals']['directors']['ids'], 'Provider names must resolve only to an existing local Person ID.' );
+lunara_suggestion_assert_same( array( 'Director One' ), $enriched['source_signals']['directors']['labels'], 'Resolved provider directors must use canonical local Person labels.' );
+lunara_suggestion_assert_true(
+    in_array( 11, array_column( array_column( $enriched['roles']['career_context']['candidates'], 'film' ), 'movie_id' ), true ),
+    'The existing bounded candidate query and scoring path must use the matched local Person ID.'
+);
+lunara_suggestion_assert_same( 0, $enriched['writes_performed'], 'Provider enrichment must remain zero-write.' );
+
+$scalar_enrichment_gateway = new Lunara_Suggestion_Fixture_Gateway(
+    array( 'directors' => array( ' Director One ' ) )
+);
+$scalar_enriched = Lunara_Debrief_Suggestions::for_review(
+    98,
+    array( 'role' => 'career_context' ),
+    $scalar_enrichment_gateway
+);
+lunara_suggestion_assert_same( 'ready', $scalar_enriched['roles']['career_context']['status'], 'Scalar provider director labels must remain supported.' );
+lunara_suggestion_assert_same( 1, $scalar_enrichment_gateway->calls, 'Scalar sparse enrichment must call the injected provider exactly once.' );
+lunara_suggestion_assert_same( 0, $scalar_enriched['writes_performed'], 'Scalar provider enrichment must remain zero-write.' );
+
+$enriched_repeat = Lunara_Debrief_Suggestions::for_review(
+    98,
+    array( 'role' => 'career_context' ),
+    $enrichment_gateway
+);
+lunara_suggestion_assert_same( $enriched['suggestion_hash'], $enriched_repeat['suggestion_hash'], 'Repeated enriched requests must produce the same suggestion hash.' );
+lunara_suggestion_assert_same( 2, $enrichment_gateway->calls, 'Each sparse enriched request may perform only one provider call.' );
+
+$local_gateway = new Lunara_Suggestion_Fixture_Gateway( array( 'directors' => array( 'Director One' ) ) );
+Lunara_Debrief_Suggestions::for_review( 99, array( 'role' => 'career_context' ), $local_gateway );
+lunara_suggestion_assert_same( 0, $local_gateway->calls, 'Sources with local career signals must not call the provider.' );
+
+foreach ( array(
+    new Lunara_Suggestion_Fixture_Gateway( 'invalid provider result' ),
+    new Lunara_Suggestion_Fixture_Gateway( array( 'directors' => array() ) ),
+    new Lunara_Suggestion_Fixture_Gateway( array(), true ),
+) as $failed_gateway ) {
+    $failed_enrichment = Lunara_Debrief_Suggestions::for_review(
+        98,
+        array( 'role' => 'career_context' ),
+        $failed_gateway
+    );
+    lunara_suggestion_assert_same( 'insufficient_evidence', $failed_enrichment['roles']['career_context']['status'], 'Missing, invalid, error, or director-less provider data must fail closed.' );
+    lunara_suggestion_assert_same( array( 'source_career_relationships_missing' ), $failed_enrichment['roles']['career_context']['reason_codes'], 'Failed provider enrichment must preserve the existing abstention reason.' );
+    lunara_suggestion_assert_same( 1, $failed_gateway->calls, 'A sparse failed enrichment attempt must still be bounded to one provider call.' );
+}
 
 $ambiguous = Lunara_Debrief_Suggestions::for_review( 97, array( 'role' => 'career_context' ) );
 lunara_suggestion_assert_same( 'unavailable', $ambiguous['source_status'], 'Duplicate source Movie identities must fail closed.' );
