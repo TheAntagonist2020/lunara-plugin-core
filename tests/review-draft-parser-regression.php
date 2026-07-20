@@ -75,6 +75,22 @@ lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'LUNARA 
 lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'Echo Film' ), 'Debrief pairings must not duplicate into article content.' );
 lunara_review_parser_assert_same( $parsed, Lunara_Review_Draft_Parser::parse( $fixture ), 'Repeated parsing must be byte-for-byte deterministic.' );
 
+$metadata_identity_fixture = str_replace(
+    '<!-- Test Film (2024) -- tt1234567 -->',
+    '<!-- LUNARA FINAL: Test Film (Director, 2024) -->',
+    $fixture
+);
+$metadata_identity_fixture = str_replace(
+    "<!-- LUNARA METADATA\n",
+    "<!-- LUNARA METADATA\nFilm: Test Film\nYear: 2024\nIMDb: tt1234567\n",
+    $metadata_identity_fixture
+);
+$metadata_identity_parsed = Lunara_Review_Draft_Parser::parse( $metadata_identity_fixture );
+lunara_review_parser_assert_true( $metadata_identity_parsed['valid'], 'LUNARA FINAL drafts must accept reviewed-film identity from the structured metadata comment.' );
+lunara_review_parser_assert_same( 'Test Film', $metadata_identity_parsed['title'], 'Metadata identity must retain the reviewed-film title.' );
+lunara_review_parser_assert_same( 2024, $metadata_identity_parsed['year'], 'Metadata identity must normalize the reviewed-film year.' );
+lunara_review_parser_assert_same( 'tt1234567', $metadata_identity_parsed['imdb_id'], 'Metadata identity must normalize the reviewed-film IMDb ID.' );
+
 $editorial_pairing_formats = str_replace(
     array(
         '<em>Echo Film</em> (2001) [tt1111111] -- It carries the central question forward.',
@@ -131,6 +147,13 @@ lunara_review_parser_assert_same( 'Echo Film', $embedded_parsed['pairings']['the
 lunara_review_parser_assert_same( '4.5/5', $embedded_parsed['score'], 'Embedded Debrief score must parse.' );
 lunara_review_parser_assert_true( false === strpos( $embedded_parsed['content'], 'LUNARA DEBRIEF' ), 'Embedded Debrief cleanup must remove the inline marker from body content.' );
 lunara_review_parser_assert_true( false === strpos( $embedded_parsed['content'], '<hr' ), 'Embedded Debrief cleanup must remove a trailing separator before the module.' );
+
+$whiplash_style_debrief = str_replace( '<strong>Score:</strong> 4.5/5', '<strong>Score:</strong> 4.0/5', $embedded_debrief );
+$whiplash_style_debrief .= "\n<!-- LUNARA METADATA\nBuild: private editorial note\n-->";
+$whiplash_style_parsed = Lunara_Review_Draft_Parser::parse_embedded_debrief( $whiplash_style_debrief );
+lunara_review_parser_assert_true( $whiplash_style_parsed['valid'], 'Classic Editor auto-harvest must accept a whole-number decimal score such as 4.0/5.' );
+lunara_review_parser_assert_same( '4.0/5', $whiplash_style_parsed['score'], 'Whole-number decimal scores must remain intact for canonical Review metadata.' );
+lunara_review_parser_assert_true( false === strpos( $whiplash_style_parsed['content'], 'private editorial note' ), 'Trailing private Debrief metadata must not enter public Review content.' );
 
 $unterminated_metadata = preg_replace( '/-->\s*$/', '', $fixture );
 $unterminated_parsed   = Lunara_Review_Draft_Parser::parse( $unterminated_metadata );

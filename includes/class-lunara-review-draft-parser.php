@@ -268,6 +268,21 @@ final class Lunara_Review_Draft_Parser {
             }
         }
 
+        $metadata_title = isset( $result['metadata']['film'] ) ? self::plain_text( $result['metadata']['film'] ) : '';
+        $metadata_year  = isset( $result['metadata']['year'] ) ? trim( (string) $result['metadata']['year'] ) : '';
+        $metadata_imdb  = isset( $result['metadata']['imdb'] ) ? strtolower( trim( (string) $result['metadata']['imdb'] ) ) : '';
+        if (
+            '' !== $metadata_title
+            && preg_match( '/^\d{4}$/', $metadata_year )
+            && preg_match( '/^tt\d{6,9}$/', $metadata_imdb )
+        ) {
+            $result['title']      = $metadata_title;
+            $result['year']       = (int) $metadata_year;
+            $result['imdb_id']    = $metadata_imdb;
+            $result['warnings'][] = 'identity_from_metadata';
+            return;
+        }
+
         $result['errors'][] = 'missing_identity';
     }
 
@@ -826,7 +841,7 @@ final class Lunara_Review_Draft_Parser {
         }
         if ( '' === $result['score'] ) {
             $result['errors'][] = 'missing_score';
-        } elseif ( ! preg_match( '/^(?:[0-4](?:\.5)?|5(?:\.0)?)(?:\s*\/\s*5)?$/', $result['score'] ) ) {
+        } elseif ( ! preg_match( '/^(?:[0-4](?:\.[05])?|5(?:\.0)?)(?:\s*\/\s*5)?$/', $result['score'] ) ) {
             $result['errors'][] = 'invalid_score';
         }
         if ( '' === $result['where_to_watch'] ) {
@@ -852,7 +867,7 @@ final class Lunara_Review_Draft_Parser {
     private static function validate_debrief_only_result( &$result ) {
         if ( '' === $result['score'] ) {
             $result['warnings'][] = 'missing_score';
-        } elseif ( ! preg_match( '/^(?:[0-4](?:\.5)?|5(?:\.0)?)(?:\s*\/\s*5)?$/', $result['score'] ) ) {
+        } elseif ( ! preg_match( '/^(?:[0-4](?:\.[05])?|5(?:\.0)?)(?:\s*\/\s*5)?$/', $result['score'] ) ) {
             $result['errors'][] = 'invalid_score';
         }
 

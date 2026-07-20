@@ -8,7 +8,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'LUNARA_CORE_DIR', dirname( __DIR__ ) . '/' );
 define( 'LUNARA_CORE_URL', 'https://example.test/wp-content/plugins/lunara-core/' );
-define( 'LUNARA_CORE_VERSION', '0.8.1' );
+define( 'LUNARA_CORE_VERSION', '0.8.2' );
 
 $GLOBALS['lunara_review_import_test'] = array(
     'posts' => array(
@@ -27,6 +27,13 @@ $GLOBALS['lunara_review_import_test'] = array(
             'post_status'  => 'draft',
             'post_title'   => 'Classic Paste',
             'post_content' => '<p>Classic editor prose.</p><hr><p><strong>LUNARA DEBRIEF</strong></p><ul><li><strong>Score:</strong> 4.5/5</li><li><strong>Where to Watch:</strong> Theatrical | Streaming</li><li><strong>Theme Echo:</strong> <em>The Fog of War</em> (2003) [tt0317910] -- It carries the moral question forward.</li><li><strong>Counter-Program:</strong> <em>Godzilla</em> (1954) [tt0047034] -- It tells the story from beneath the bomb.</li><li><strong>Career Context:</strong> <em>Dunkirk</em> (2017) [tt5013056] -- It reveals Nolan\'s earlier experiment with war as sensation.</li></ul>',
+            'post_excerpt' => '',
+        ),
+        81 => array(
+            'post_type'    => 'review',
+            'post_status'  => 'draft',
+            'post_title'   => 'Whiplash Review',
+            'post_content' => "<!-- LUNARA FINAL: Whiplash (Chazelle, 2014) -->\n<!-- Post-date: 2014-10-10 -->\n<!-- Score: 4.0/5 -->\n<!-- IMDb: tt2582802 -->\n<!-- Director: Damien Chazelle -->\n<em>A Whiplash standfirst.</em><p>Whiplash review prose.</p><hr><strong>LUNARA DEBRIEF</strong><ul><li><strong>Score:</strong> 4.0/5</li><li><strong>Year:</strong> 2014</li><li><strong>Where to Watch:</strong> Rent/buy (Apple TV, Prime Video, Vudu)</li><li><strong>Theme Echo:</strong> <em>The Fog of War</em> (2003) [tt0317910] -- It carries the central question forward.</li><li><strong>Counter-Program:</strong> <em>Godzilla</em> (1954) [tt0047034] -- It changes the temperature.</li><li><strong>Career Context:</strong> <em>Dunkirk</em> (2017) [tt5013056] -- It reveals the artist's prior experiment.</li></ul>\n<!-- LUNARA METADATA\nFilm: Whiplash\nDirector: Damien Chazelle\nYear: 2014\nPost-date: 2014-10-10\nScore: 4.0/5\nIMDb: tt2582802\nStudio / Distributor: Sony Pictures Classics / Bold Films / Blumhouse Productions\nRuntime: 106 min\nBuild: private editorial note\n-->",
             'post_excerpt' => '',
         ),
     ),
@@ -421,10 +428,22 @@ lunara_review_import_assert_true( ! isset( $GLOBALS['lunara_review_import_test']
 lunara_review_import_assert_same( 'complete', get_post_meta( 80, Lunara_Review_Draft_Import_Admin::SOURCE_META, true )['status'], 'Classic Editor embedded Debrief harvest must leave an audit record.' );
 lunara_review_import_assert_true( in_array( 80, $GLOBALS['lunara_review_import_test']['sync_calls'], true ), 'Classic Editor embedded Debrief harvest must sync archive terms after filling fields.' );
 
+$whiplash_document = Lunara_Review_Draft_Parser::parse( get_post( 81 )->post_content );
+lunara_review_import_assert_true( $whiplash_document['valid'], 'The Whiplash-format source must satisfy the full metadata parser before Classic Editor harvesting: ' . implode( ', ', $whiplash_document['errors'] ) );
+Lunara_Review_Draft_Import_Admin::harvest_embedded_debrief_on_save( 81, get_post( 81 ), true );
+lunara_review_import_assert_true( false === strpos( $GLOBALS['lunara_review_import_test']['posts'][81]['post_content'], 'LUNARA DEBRIEF' ), 'Whiplash-format harvesting must remove the inline Debrief duplicate.' );
+lunara_review_import_assert_true( false === strpos( $GLOBALS['lunara_review_import_test']['posts'][81]['post_content'], 'private editorial note' ), 'Whiplash-format harvesting must keep the trailing private Build note out of public content.' );
+lunara_review_import_assert_same( '4.0', get_post_meta( 81, '_lunara_score', true ), 'Whiplash-format decimal scores must fill the canonical Review score.' );
+lunara_review_import_assert_same( '2014', get_post_meta( 81, '_lunara_year', true ), 'Whiplash-format metadata must fill the canonical Review year.' );
+lunara_review_import_assert_same( 'tt2582802', get_post_meta( 81, '_lunara_imdb_title_id', true ), 'Whiplash-format metadata must fill the reviewed-film IMDb identity.' );
+lunara_review_import_assert_same( 'Damien Chazelle', get_post_meta( 81, '_lunara_director', true ), 'Whiplash-format metadata must fill the Review director.' );
+lunara_review_import_assert_same( '106 min', get_post_meta( 81, '_lunara_runtime', true ), 'Whiplash-format metadata must fill the Review runtime.' );
+lunara_review_import_assert_same( 'Sony Pictures Classics / Bold Films / Blumhouse Productions', get_post_meta( 81, '_lunara_studio', true ), 'Whiplash-format metadata must fill the Review studio and distributor.' );
+
 $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $admin     = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-draft-import-admin.js' );
-lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.1" ), 'Core must identify the Classic Editor Debrief auto-harvest release.' );
+lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.2" ), 'Core must identify the Whiplash-format Classic Editor import release.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, "'revisions'" ), 'Review CPT must retain native WordPress revisions.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, '/lunara/v1/review-draft-import/' ), 'Importer REST loading must remain exact-prefix private.' );
 lunara_review_import_assert_true( false === strpos( $admin, 'add_shortcode' ), 'The importer must not create a shortcode dependency.' );
