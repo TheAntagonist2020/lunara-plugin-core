@@ -69,6 +69,14 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.2` extends the one-paste Classic Editor workflow to the established
+`LUNARA FINAL` review format. Whole-number decimal scores such as `4.0/5` are
+valid, reviewed-film identity can come from the structured `LUNARA METADATA`
+comment, and empty year, IMDb, director, runtime, studio/distributor, score,
+Where to Watch, and Debrief Studio fields are filled on save. Existing curated
+values are preserved. The inline Debrief and trailing private Build note are
+removed from public article content so Pair It With renders only once.
+
 Core `0.8.1` adds Classic Editor Debrief auto-harvesting. When a saved Review
 body contains a valid inline `LUNARA DEBRIEF` module, Core fills empty Debrief
 Studio fields, preserves existing curated selections, resolves published local

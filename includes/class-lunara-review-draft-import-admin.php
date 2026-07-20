@@ -413,6 +413,14 @@ final class Lunara_Review_Draft_Import_Admin {
             return;
         }
 
+        $document = Lunara_Review_Draft_Parser::parse( $post->post_content );
+        if ( ! empty( $document['valid'] ) ) {
+            $review_fields = self::fill_review_fields( $review_id, $document );
+            if ( is_wp_error( $review_fields ) ) {
+                return;
+            }
+        }
+
         $resolutions = self::apply_debrief_fields( $review_id, $parsed['pairings'] );
         if ( is_wp_error( $resolutions ) ) {
             return;
