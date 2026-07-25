@@ -34,7 +34,7 @@ final class Lunara_Review_Draft_Import_Admin {
     public static function add_meta_box() {
         add_meta_box(
             'lunara_review_draft_import',
-            __( 'Import Review Draft', 'lunara-core' ),
+            __( 'Review Intake', 'lunara-core' ),
             array( __CLASS__, 'render_meta_box' ),
             'review',
             'normal',
@@ -53,45 +53,52 @@ final class Lunara_Review_Draft_Import_Admin {
         ?>
         <div class="lunara-review-import" data-lunara-review-import data-review-id="<?php echo esc_attr( $review_id ); ?>">
             <p class="lunara-review-import-intro">
-                <?php esc_html_e( 'Turn HTML, Word, or Google Docs draft exports into native WordPress blocks and editable Lunara fields. Preview first; nothing is published or overwritten.', 'lunara-core' ); ?>
+                <?php esc_html_e( 'Paste directly into the Review editor or import an HTML, Word, or Google Docs draft. Lunara detects an embedded Debrief and fills empty Studio fields without overwriting your edits.', 'lunara-core' ); ?>
             </p>
+            <div class="lunara-review-live-harvest" data-lunara-review-live-harvest data-state="watching" role="status" aria-live="polite" aria-atomic="true">
+                <strong><?php esc_html_e( 'Live Debrief detection is on.', 'lunara-core' ); ?></strong>
+                <span data-lunara-review-live-harvest-message><?php esc_html_e( 'Paste the Review into the editor once; Theme Echo, Counter-Program, and Career Context will be read from its LUNARA DEBRIEF section.', 'lunara-core' ); ?></span>
+            </div>
 
             <?php if ( 'save_first' === $importability['reason'] ) : ?>
                 <p class="notice notice-info inline"><strong><?php esc_html_e( 'Save this Review as a draft once to enable importing.', 'lunara-core' ); ?></strong></p>
             <?php elseif ( ! $importability['importable'] ) : ?>
                 <p class="notice notice-warning inline"><strong><?php esc_html_e( 'Reference HTML can be imported only while this Review is saved with Draft status.', 'lunara-core' ); ?></strong></p>
             <?php else : ?>
-                <div class="lunara-review-import-grid">
-                    <div>
-                        <label for="lunara-review-import-file"><strong><?php esc_html_e( 'Choose HTML, Word, or Google Docs export', 'lunara-core' ); ?></strong></label>
-                        <input id="lunara-review-import-file" type="file" accept=".html,.htm,.docx,.zip,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" data-lunara-review-import-file>
+                <details class="lunara-review-import-advanced">
+                    <summary><?php esc_html_e( 'Use the complete file importer instead', 'lunara-core' ); ?></summary>
+                    <div class="lunara-review-import-grid">
+                        <div>
+                            <label for="lunara-review-import-file"><strong><?php esc_html_e( 'Choose HTML, Word, or Google Docs export', 'lunara-core' ); ?></strong></label>
+                            <input id="lunara-review-import-file" type="file" accept=".html,.htm,.docx,.zip,text/html,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" data-lunara-review-import-file>
+                        </div>
+                        <div>
+                            <label for="lunara-review-import-html"><strong><?php esc_html_e( 'Or paste HTML/rich text from Word or Google Docs', 'lunara-core' ); ?></strong></label>
+                            <textarea id="lunara-review-import-html" rows="8" data-lunara-review-import-html spellcheck="false"></textarea>
+                            <p class="description"><?php esc_html_e( 'Rich clipboard formatting is captured as HTML when the source application provides it.', 'lunara-core' ); ?></p>
+                        </div>
                     </div>
-                    <div>
-                        <label for="lunara-review-import-html"><strong><?php esc_html_e( 'Or paste HTML/rich text from Word or Google Docs', 'lunara-core' ); ?></strong></label>
-                        <textarea id="lunara-review-import-html" rows="8" data-lunara-review-import-html spellcheck="false"></textarea>
-                        <p class="description"><?php esc_html_e( 'Rich clipboard formatting is captured as HTML when the source application provides it.', 'lunara-core' ); ?></p>
+                    <div class="lunara-review-import-actions">
+                        <button type="button" class="button button-secondary" data-lunara-review-import-preview><?php esc_html_e( 'Preview import', 'lunara-core' ); ?></button>
+                        <button type="button" class="button button-primary" data-lunara-review-import-apply disabled><?php esc_html_e( 'Apply to this draft', 'lunara-core' ); ?></button>
+                        <span class="spinner" data-lunara-review-import-spinner></span>
                     </div>
-                </div>
-                <div class="lunara-review-import-actions">
-                    <button type="button" class="button button-secondary" data-lunara-review-import-preview><?php esc_html_e( 'Preview import', 'lunara-core' ); ?></button>
-                    <button type="button" class="button button-primary" data-lunara-review-import-apply disabled><?php esc_html_e( 'Apply to this draft', 'lunara-core' ); ?></button>
-                    <span class="spinner" data-lunara-review-import-spinner></span>
-                </div>
-                <p class="lunara-review-import-status" role="status" aria-live="polite" aria-atomic="true" data-lunara-review-import-status></p>
-                <p class="lunara-review-import-alert" role="alert" aria-live="assertive" aria-atomic="true" hidden data-lunara-review-import-alert></p>
-                <section class="lunara-review-import-preview" hidden data-lunara-review-import-result aria-label="<?php esc_attr_e( 'Review import preview', 'lunara-core' ); ?>">
-                    <div class="lunara-review-import-summary" data-lunara-review-import-summary></div>
-                    <div class="lunara-review-import-pairings" data-lunara-review-import-pairings></div>
-                    <div class="lunara-review-import-warnings" data-lunara-review-import-warnings></div>
-                </section>
+                    <p class="lunara-review-import-status" role="status" aria-live="polite" aria-atomic="true" data-lunara-review-import-status></p>
+                    <p class="lunara-review-import-alert" role="alert" aria-live="assertive" aria-atomic="true" hidden data-lunara-review-import-alert></p>
+                    <section class="lunara-review-import-preview" hidden data-lunara-review-import-result aria-label="<?php esc_attr_e( 'Review import preview', 'lunara-core' ); ?>">
+                        <div class="lunara-review-import-summary" data-lunara-review-import-summary></div>
+                        <div class="lunara-review-import-pairings" data-lunara-review-import-pairings></div>
+                        <div class="lunara-review-import-warnings" data-lunara-review-import-warnings></div>
+                    </section>
+                </details>
             <?php endif; ?>
         </div>
         <?php
     }
 
-    /** Enqueue assets only on a persisted Review edit screen. */
+    /** Enqueue assets on new and existing Review editor screens. */
     public static function enqueue_assets( $hook ) {
-        if ( 'post.php' !== $hook || ! function_exists( 'get_current_screen' ) ) {
+        if ( ! in_array( $hook, array( 'post.php', 'post-new.php' ), true ) || ! function_exists( 'get_current_screen' ) ) {
             return;
         }
 
@@ -101,7 +108,8 @@ final class Lunara_Review_Draft_Import_Admin {
         }
 
         $review_id = self::current_review_id();
-        if ( ! self::review_importability( $review_id )['importable'] || ! current_user_can( 'edit_post', $review_id ) ) {
+        $post = $review_id > 0 ? get_post( $review_id ) : null;
+        if ( ! ( $post instanceof WP_Post ) || 'review' !== $post->post_type || ! current_user_can( 'edit_post', $review_id ) ) {
             return;
         }
 
@@ -144,6 +152,10 @@ final class Lunara_Review_Draft_Import_Admin {
                     'failed'       => __( 'The import could not be completed. Review the warning and try again.', 'lunara-core' ),
                     'already'      => __( 'This exact source file has already been imported into this Review.', 'lunara-core' ),
                     'unresolved'   => __( 'Missing local Movie records remain editable in Debrief Studio and can be added with the private Movie importer.', 'lunara-core' ),
+                    'liveReading'  => __( 'Reading the Debrief already inside the Review...', 'lunara-core' ),
+                    'liveReady'    => __( 'Debrief detected. Your normal Update or Publish action will save these fields and remove the duplicate inline module.', 'lunara-core' ),
+                    'livePartial'  => __( 'Debrief detected. Empty Studio fields were filled; existing hand-edited choices were preserved.', 'lunara-core' ),
+                    'liveInvalid'  => __( 'A LUNARA DEBRIEF section was found, but all three pairings could not be read yet.', 'lunara-core' ),
                 ),
             )
         );
@@ -172,6 +184,23 @@ final class Lunara_Review_Draft_Import_Admin {
                 )
             );
         }
+
+        register_rest_route(
+            self::REST_NAMESPACE,
+            self::REST_BASE . '/harvest-preview',
+            array(
+                'methods'             => 'POST',
+                'callback'            => array( __CLASS__, 'rest_harvest_preview' ),
+                'permission_callback' => array( __CLASS__, 'rest_harvest_preview_permission' ),
+                'args'                => array(
+                    'review_id' => array(
+                        'required'          => true,
+                        'sanitize_callback' => 'absint',
+                    ),
+                    'html' => array( 'required' => true, 'type' => 'string' ),
+                ),
+            )
+        );
     }
 
     /** Require an editable, unpublished Review. */
@@ -179,6 +208,71 @@ final class Lunara_Review_Draft_Import_Admin {
         $review_id = absint( $request->get_param( 'review_id' ) );
         return self::review_importability( $review_id )['importable']
             && current_user_can( 'edit_post', $review_id );
+    }
+
+    /** Permit read-only live harvesting on any persisted editable Review. */
+    public static function rest_harvest_preview_permission( $request ) {
+        $review_id = absint( $request->get_param( 'review_id' ) );
+        $post      = $review_id > 0 ? get_post( $review_id ) : null;
+
+        return $post instanceof WP_Post
+            && 'review' === $post->post_type
+            && current_user_can( 'edit_post', $review_id );
+    }
+
+    /** Parse the Debrief already present in the current editor without writing data. */
+    public static function rest_harvest_preview( $request ) {
+        $review_id = absint( $request->get_param( 'review_id' ) );
+        $html      = $request->get_param( 'html' );
+
+        if ( ! is_string( $html ) || strlen( $html ) > Lunara_Review_Draft_Parser::MAX_INPUT_BYTES ) {
+            return new WP_Error(
+                'invalid_live_debrief_source',
+                __( 'The current Review text is missing or too large to inspect safely.', 'lunara-core' ),
+                array( 'status' => 400 )
+            );
+        }
+
+        if ( false === stripos( $html, 'LUNARA DEBRIEF' ) ) {
+            return rest_ensure_response( array( 'valid' => false, 'found' => false ) );
+        }
+
+        $parsed = Lunara_Review_Draft_Parser::parse_embedded_debrief( $html );
+        if ( empty( $parsed['valid'] ) ) {
+            return rest_ensure_response(
+                array(
+                    'valid'    => false,
+                    'found'    => true,
+                    'errors'   => isset( $parsed['errors'] ) ? array_values( $parsed['errors'] ) : array(),
+                    'warnings' => isset( $parsed['warnings'] ) ? array_values( $parsed['warnings'] ) : array(),
+                )
+            );
+        }
+
+        $legacy_fields = array();
+        $reason_fields = array();
+        foreach ( array_keys( Lunara_Debrief_Contract::roles() ) as $role ) {
+            $pairing = isset( $parsed['pairings'][ $role ] ) ? $parsed['pairings'][ $role ] : array();
+            $legacy_fields[ $role ] = self::legacy_pairing_value( $pairing );
+            $reason_fields[ $role ] = isset( $pairing['reason'] ) ? (string) $pairing['reason'] : '';
+        }
+
+        $preview_html = '';
+        if ( class_exists( 'Lunara_Debrief_Studio' ) && method_exists( 'Lunara_Debrief_Studio', 'pairing_preview_html' ) ) {
+            $preview_html = Lunara_Debrief_Studio::pairing_preview_html( $review_id, $parsed['pairings'] );
+        }
+
+        return rest_ensure_response(
+            array(
+                'valid'              => true,
+                'found'              => true,
+                'pairings'           => $parsed['pairings'],
+                'legacyFields'       => $legacy_fields,
+                'reasonFields'       => $reason_fields,
+                'debriefPreviewHtml' => $preview_html,
+                'warnings'           => isset( $parsed['warnings'] ) ? array_values( $parsed['warnings'] ) : array(),
+            )
+        );
     }
 
     /** Return a read-only mapping preview. */
@@ -760,6 +854,12 @@ final class Lunara_Review_Draft_Import_Admin {
         if ( isset( $_GET['post'] ) ) {
             return absint( $_GET['post'] );
         }
+
+        global $post;
+        if ( $post instanceof WP_Post && 'review' === $post->post_type ) {
+            return absint( $post->ID );
+        }
+
         return 0;
     }
 

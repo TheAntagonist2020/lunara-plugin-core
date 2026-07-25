@@ -69,6 +69,15 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.4` turns the existing Classic Editor Debrief harvester into an
+immediate editor workflow. When the Review editor contains a valid
+`LUNARA DEBRIEF` section, a private read-only preview request fills only empty
+Theme Echo, Counter-Program, Career Context, and matching reason controls in the
+current form and replaces the saved-only Studio preview with a live preview.
+No database write happens during detection. Existing hand-edited values are
+preserved, and the normal Update or Publish action performs the established
+server-side save, duplicate removal, and verification.
+
 Core `0.8.3` makes Debrief Studio tolerant during composition without weakening
 the public contract. Draft Film Dossiers are selectable while a Debrief is
 Incomplete, newly imported drafts are selected in-place, and the saved
