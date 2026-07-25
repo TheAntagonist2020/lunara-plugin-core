@@ -8,7 +8,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'LUNARA_CORE_DIR', dirname( __DIR__ ) . '/' );
 define( 'LUNARA_CORE_URL', 'https://example.test/wp-content/plugins/lunara-core/' );
-define( 'LUNARA_CORE_VERSION', '0.8.3' );
+define( 'LUNARA_CORE_VERSION', '0.8.4' );
 
 $GLOBALS['lunara_review_import_test'] = array(
     'posts' => array(
@@ -297,6 +297,19 @@ lunara_review_import_assert_true( false !== strpos( $preview['debriefPreviewHtml
 $unsupported_format = Lunara_Review_Draft_Import_Admin::rest_preview( new Lunara_Review_Import_Test_Request( array( 'review_id' => 10, 'source_format' => 'doc', 'html' => $html ) ) );
 lunara_review_import_assert_true( is_wp_error( $unsupported_format ) && 'unsupported_source_format' === $unsupported_format->get_error_code(), 'Legacy binary DOC and unknown source formats must be rejected explicitly.' );
 
+$live_before = serialize( $GLOBALS['lunara_review_import_test'] );
+$live_preview = Lunara_Review_Draft_Import_Admin::rest_harvest_preview( new Lunara_Review_Import_Test_Request( array( 'review_id' => 30, 'html' => $html ) ) );
+lunara_review_import_assert_true( $live_preview['valid'] && $live_preview['found'], 'Live harvesting must parse the Debrief already inside current editor text.' );
+lunara_review_import_assert_true( Lunara_Review_Draft_Import_Admin::rest_harvest_preview_permission( new Lunara_Review_Import_Test_Request( array( 'review_id' => 30 ) ) ), 'Read-only live harvesting must remain available while editing a published Review.' );
+lunara_review_import_assert_true( Lunara_Review_Draft_Import_Admin::rest_harvest_preview_permission( new Lunara_Review_Import_Test_Request( array( 'review_id' => 33 ) ) ), 'Read-only live harvesting must work on a new Review auto-draft before its first save.' );
+lunara_review_import_assert_true( false !== strpos( $live_preview['legacyFields']['theme_echo'], 'tt0317910' ), 'Live harvesting must return the complete editable Theme Echo value.' );
+lunara_review_import_assert_same( "It carries the moral question forward.", $live_preview['reasonFields']['theme_echo'], 'Live harvesting must return the exact editorial reason.' );
+lunara_review_import_assert_true( false !== strpos( $live_preview['debriefPreviewHtml'], 'lunara-pair-preview' ), 'Live harvesting must return the rich Studio preview without saving.' );
+lunara_review_import_assert_same( $live_before, serialize( $GLOBALS['lunara_review_import_test'] ), 'Read-only live harvesting must perform zero content or metadata writes.' );
+
+$live_missing = Lunara_Review_Draft_Import_Admin::rest_harvest_preview( new Lunara_Review_Import_Test_Request( array( 'review_id' => 30, 'html' => '<p>No embedded module.</p>' ) ) );
+lunara_review_import_assert_true( ! $live_missing['valid'] && ! $live_missing['found'], 'Editor text without a Debrief marker must remain a quiet no-op.' );
+
 $GLOBALS['lunara_review_import_test']['acf'][70] = array(
     'theme_echo_movie' => 777,
     'theme_echo_note'  => 'Existing curated reason.',
@@ -347,12 +360,21 @@ Lunara_Review_Draft_Import_Admin::render_meta_box( get_post( 30 ) );
 $published_box = ob_get_clean();
 lunara_review_import_assert_true( false !== strpos( $published_box, 'only while this Review is saved with Draft status' ), 'Published editors must receive a clear drafts-only notice.' );
 lunara_review_import_assert_true( false === strpos( $published_box, 'data-lunara-review-import-preview' ), 'Published editors must not receive active importer controls.' );
+lunara_review_import_assert_true( false !== strpos( $published_box, 'data-lunara-review-live-harvest' ), 'Published editors must retain read-only live Debrief detection.' );
 
 $_GET['post'] = 30;
 Lunara_Review_Draft_Import_Admin::enqueue_assets( 'post.php' );
-lunara_review_import_assert_same( array(), $GLOBALS['lunara_review_import_test']['enqueued_scripts'], 'Published Review editors must not load importer assets.' );
+lunara_review_import_assert_true( isset( $GLOBALS['lunara_review_import_test']['enqueued_scripts']['lunara-core-review-draft-import'] ), 'Published Review editors must load the read-only live Debrief detector.' );
+
+unset( $_GET['post'] );
+$GLOBALS['post'] = get_post( 33 );
+$GLOBALS['lunara_review_import_test']['enqueued_scripts'] = array();
+$GLOBALS['lunara_review_import_test']['localized_scripts'] = array();
+Lunara_Review_Draft_Import_Admin::enqueue_assets( 'post-new.php' );
+lunara_review_import_assert_true( isset( $GLOBALS['lunara_review_import_test']['enqueued_scripts']['lunara-core-review-draft-import'] ), 'A new Review auto-draft must load live Debrief detection before its first save.' );
 
 $_GET['post'] = 10;
+$GLOBALS['post'] = null;
 Lunara_Review_Draft_Import_Admin::enqueue_assets( 'post.php' );
 lunara_review_import_assert_same(
     array( 'wp-data' ),
@@ -443,7 +465,7 @@ lunara_review_import_assert_same( 'Sony Pictures Classics / Bold Films / Blumhou
 $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $admin     = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-draft-import-admin.js' );
-lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.3" ), 'Core must identify the tolerant Debrief Studio release.' );
+lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.4" ), 'Core must identify the live Debrief harvesting release.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, "'revisions'" ), 'Review CPT must retain native WordPress revisions.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, '/lunara/v1/review-draft-import/' ), 'Importer REST loading must remain exact-prefix private.' );
 lunara_review_import_assert_true( false === strpos( $admin, 'add_shortcode' ), 'The importer must not create a shortcode dependency.' );
@@ -460,6 +482,11 @@ lunara_review_import_assert_true( false !== strpos( $script, 'readAsArrayBuffer'
 lunara_review_import_assert_true( false !== strpos( $script, "getData('text/html')" ), 'Rich clipboard HTML from Word and Google Docs must be captured before plain-text fallback.' );
 lunara_review_import_assert_true( false !== strpos( $script, 'normalizeClipboardHtml' ), 'Rich clipboard wrappers must be normalized before the strict HTML parser runs.' );
 lunara_review_import_assert_true( false !== strpos( $script, 'debriefPreviewHtml' ), 'The editor must render the server-generated rich Debrief preview before apply.' );
+lunara_review_import_assert_true( false !== strpos( $script, "post('harvest-preview'" ), 'The editor must use the private read-only live-harvest endpoint.' );
+lunara_review_import_assert_true( false !== strpos( $script, 'currentEditorHtml' ), 'Live harvesting must read the active Classic Editor surface directly.' );
+lunara_review_import_assert_true( false !== strpos( $script, 'fillHarvestedField' ), 'Live harvesting must fill safe editor controls without an intermediate import form.' );
+lunara_review_import_assert_true( false !== strpos( $script, 'data-lunara-live-harvest-value' ), 'Live harvesting must distinguish its own values from hand-edited Studio choices.' );
+lunara_review_import_assert_true( false !== strpos( $admin, 'lunara-review-import-advanced' ), 'The complete file importer must remain available without dominating the normal paste-once workflow.' );
 lunara_review_import_assert_true( false !== strpos( $admin, 'harvest_embedded_debrief_on_save' ), 'Classic Editor saves must auto-harvest embedded Debrief modules.' );
 lunara_review_import_assert_true( false !== strpos( $admin, 'parse_embedded_debrief' ), 'Classic Editor auto-harvest must use the Debrief-only parser.' );
 

@@ -83,9 +83,10 @@
             return;
         }
         editor._lunaraReviewImportBound = true;
-        editor.on('input change undo redo', function () {
+        editor.on('input change undo redo paste', function () {
             root._lunaraFormDirty = true;
             root._lunaraFormGeneration = Number(root._lunaraFormGeneration || 0) + 1;
+            scheduleLiveHarvest(root);
         });
     }
 
@@ -366,6 +367,182 @@
         } catch (error) {
             return html;
         }
+    }
+
+    function setLiveHarvestStatus(root, state, message) {
+        var container = select(root, '[data-lunara-review-live-harvest]');
+        var target = select(root, '[data-lunara-review-live-harvest-message]');
+
+        if (container) {
+            container.setAttribute('data-state', state || 'watching');
+        }
+        if (target && typeof message !== 'undefined') {
+            target.textContent = text(message);
+        }
+    }
+
+    function currentEditorHtml() {
+        var editor = window.tinymce && typeof window.tinymce.get === 'function'
+            ? window.tinymce.get('content')
+            : null;
+        var textarea = document.getElementById('content');
+
+        if (
+            editor
+            && typeof editor.getContent === 'function'
+            && (typeof editor.isHidden !== 'function' || !editor.isHidden())
+        ) {
+            return text(editor.getContent({ format: 'raw' }));
+        }
+        return textarea ? text(textarea.value) : '';
+    }
+
+    function harvestedField(selector) {
+        return document.querySelector(selector);
+    }
+
+    function fillHarvestedField(field, value) {
+        var next = text(value).trim();
+        var current;
+        var previous;
+
+        if (!field || !next) {
+            return 'missing';
+        }
+
+        current = text(field.value).trim();
+        previous = text(field.getAttribute('data-lunara-live-harvest-value')).trim();
+        if (current && current !== previous) {
+            return 'preserved';
+        }
+        if (current === next) {
+            field.setAttribute('data-lunara-live-harvest-value', next);
+            return 'matched';
+        }
+
+        field.value = next;
+        field.setAttribute('data-lunara-live-harvest-value', next);
+        field.dispatchEvent(new window.Event('input', { bubbles: true }));
+        field.dispatchEvent(new window.Event('change', { bubbles: true }));
+        return 'filled';
+    }
+
+    function renderLiveDebriefPreview(response) {
+        var container = document.querySelector('[data-key="field_lunara_review_debrief_preview"] .acf-input');
+        var richPreview = response && typeof response.debriefPreviewHtml === 'string'
+            ? response.debriefPreviewHtml.trim()
+            : '';
+
+        if (!container || !richPreview) {
+            return;
+        }
+
+        container.innerHTML = '<span class="lunara-debrief-eyebrow">Live Preview</span>'
+            + richPreview
+            + '<p class="description lunara-debrief-preview-caption">Detected from the unsaved Review text. Your normal Update or Publish action saves it.</p>';
+    }
+
+    function applyLiveHarvest(root, response) {
+        var legacy = response.legacyFields || {};
+        var reasons = response.reasonFields || {};
+        var fields = {
+            theme_echo: {
+                legacy: '#lunara_theme_echo',
+                reason: '[data-key="field_lunara_review_theme_echo_note"] textarea, [data-key="field_lunara_review_theme_echo_note"] input'
+            },
+            counter_program: {
+                legacy: '#lunara_counter_program',
+                reason: '[data-key="field_lunara_review_counter_program_note"] textarea, [data-key="field_lunara_review_counter_program_note"] input'
+            },
+            career_context: {
+                legacy: '#lunara_career_context',
+                reason: '[data-key="field_lunara_review_career_context_note"] textarea, [data-key="field_lunara_review_career_context_note"] input'
+            }
+        };
+        var filled = 0;
+        var preserved = 0;
+
+        Object.keys(fields).forEach(function (role) {
+            [
+                fillHarvestedField(harvestedField(fields[role].legacy), legacy[role]),
+                fillHarvestedField(harvestedField(fields[role].reason), reasons[role])
+            ].forEach(function (result) {
+                filled += result === 'filled' ? 1 : 0;
+                preserved += result === 'preserved' ? 1 : 0;
+            });
+        });
+
+        renderLiveDebriefPreview(response);
+        setLiveHarvestStatus(
+            root,
+            preserved ? 'partial' : 'ready',
+            string(
+                preserved ? 'livePartial' : 'liveReady',
+                preserved
+                    ? 'Debrief detected. Empty Studio fields were filled; existing hand-edited choices were preserved.'
+                    : 'Debrief detected. Your normal Update or Publish action will save these fields and remove the duplicate inline module.'
+            ) + (filled ? ' ' + filled + ' field' + (filled === 1 ? '' : 's') + ' filled.' : '')
+        );
+    }
+
+    function runLiveHarvest(root) {
+        var html = currentEditorHtml();
+        var generation;
+
+        if (!/LUNARA\s+DEBRIEF/i.test(html)) {
+            root._lunaraLiveSource = '';
+            return;
+        }
+        if (byteLength(html) > maxBytes() || html === root._lunaraLiveSource) {
+            return;
+        }
+
+        root._lunaraLiveSource = html;
+        generation = Number(root._lunaraLiveGeneration || 0) + 1;
+        root._lunaraLiveGeneration = generation;
+        setLiveHarvestStatus(root, 'reading', string('liveReading', 'Reading the Debrief already inside the Review...'));
+
+        post('harvest-preview', {
+            review_id: Number(config.reviewId || root.getAttribute('data-review-id') || 0),
+            html: html
+        }).then(function (response) {
+            if (generation !== root._lunaraLiveGeneration) {
+                return;
+            }
+            if (!response || response.valid !== true) {
+                setLiveHarvestStatus(root, 'invalid', string('liveInvalid', 'A LUNARA DEBRIEF section was found, but all three pairings could not be read yet.'));
+                return;
+            }
+            applyLiveHarvest(root, response);
+        }).catch(function () {
+            if (generation === root._lunaraLiveGeneration) {
+                setLiveHarvestStatus(root, 'invalid', string('liveInvalid', 'A LUNARA DEBRIEF section was found, but all three pairings could not be read yet.'));
+            }
+        });
+    }
+
+    function scheduleLiveHarvest(root) {
+        window.clearTimeout(root._lunaraLiveTimer);
+        root._lunaraLiveTimer = window.setTimeout(function () {
+            runLiveHarvest(root);
+        }, 450);
+    }
+
+    function bindLiveHarvest(root) {
+        var textarea = document.getElementById('content');
+
+        if (textarea && !textarea._lunaraLiveHarvestBound) {
+            textarea._lunaraLiveHarvestBound = true;
+            textarea.addEventListener('input', function () {
+                scheduleLiveHarvest(root);
+            });
+            textarea.addEventListener('paste', function () {
+                window.setTimeout(function () {
+                    scheduleLiveHarvest(root);
+                }, 0);
+            });
+        }
+        scheduleLiveHarvest(root);
     }
 
     function sourceFor(root) {
@@ -866,13 +1043,14 @@
         var previewButton = select(root, '[data-lunara-review-import-preview]');
         var applyButton = select(root, '[data-lunara-review-import-apply]');
 
-        if (!previewButton || !applyButton) {
-            return;
-        }
-
         captureEditorState(root);
         bindFormDirtyState(root);
         bindSaveLifecycle(root);
+        bindLiveHarvest(root);
+
+        if (!previewButton || !applyButton) {
+            return;
+        }
 
         if (fileInput) {
             fileInput.addEventListener('change', function () {
