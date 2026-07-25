@@ -24,6 +24,7 @@ $GLOBALS['lunara_import_admin_test'] = array(
     ),
     'nonce_valid' => true,
     'service'     => null,
+    'record'      => array( 'pairings' => array() ),
     'localized'   => array(),
     'styles'      => array(),
     'scripts'     => array(),
@@ -104,6 +105,19 @@ final class Lunara_Debrief_Contract {
             ? strtolower( $matches[1] )
             : '';
     }
+
+    public static function record_from_review( $review_id ) {
+        return $GLOBALS['lunara_import_admin_test']['record'];
+    }
+
+    public static function parse_pairing_text( $value ) {
+        preg_match( '/^(.+?)\s*\((\d{4})\).*?\b(tt\d{6,9})\b/i', (string) $value, $matches );
+        return array(
+            'title'   => trim( $matches[1] ?? '' ),
+            'year'    => isset( $matches[2] ) ? (int) $matches[2] : 0,
+            'imdb_id' => strtolower( $matches[3] ?? '' ),
+        );
+    }
 }
 
 final class Lunara_Test_Movie_Importer {
@@ -112,6 +126,8 @@ final class Lunara_Test_Movie_Importer {
     public $preview_status = 'ready';
     public $preview_local  = false;
     public $apply_status   = 'created';
+    public $candidate_title = 'The Godfather';
+    public $candidate_year  = '1972';
 
     public function preview_by_imdb( $imdb_id ) {
         $this->previews[] = $imdb_id;
@@ -131,8 +147,8 @@ final class Lunara_Test_Movie_Importer {
             'schema_version' => 'lunara-movie-import/v1',
             'candidate'      => array(
                 'imdb_title_id' => $imdb_id,
-                'title'         => 'The Godfather',
-                'release_year'  => '1972',
+                'title'         => $this->candidate_title,
+                'release_year'  => $this->candidate_year,
                 'runtime'       => '175 min',
                 'directors'     => array(
                     array( 'name' => 'Francis Ford Coppola', 'tmdb_person_id' => 1776 ),
@@ -409,6 +425,63 @@ lunara_import_admin_assert_same( 'Francis Ford Coppola', $lookup_response->data[
 lunara_import_admin_assert_true( ! isset( $lookup_response->data['candidate']['poster_url'] ), 'Provider URLs must not be returned to the browser.' );
 lunara_import_admin_assert_same( array( 'tt0068646' ), $GLOBALS['lunara_import_admin_test']['service']->previews, 'Lookup must delegate to importer preview_by_imdb once.' );
 
+$GLOBALS['lunara_import_admin_test']['record'] = array(
+    'pairings' => array(
+        array(
+            'role'         => 'career_context',
+            'film'         => array(),
+            'legacy_value' => 'Beau Is Afraid (2023) — Ari Aster career context | tt7599146',
+        ),
+    ),
+);
+$GLOBALS['lunara_import_admin_test']['service']->candidate_title = 'Sound of Freedom';
+$GLOBALS['lunara_import_admin_test']['service']->candidate_year  = '2023';
+$identity_request = new Lunara_Test_REST_Request(
+    array(
+        'review_id' => 99,
+        'role'      => 'career_context',
+        'imdb_id'   => 'tt7599146',
+    )
+);
+$imports_before_identity = count( $GLOBALS['lunara_import_admin_test']['service']->imports );
+$identity_lookup = Lunara_Movie_Import_Admin::rest_lookup( $identity_request );
+lunara_import_admin_assert_same( 'lunara_movie_import_identity_conflict', $identity_lookup->get_error_code(), 'A stale IMDb ID must not replace the saved editorial film.' );
+lunara_import_admin_assert_same( 409, $identity_lookup->get_error_data()['status'], 'An identity conflict must return HTTP 409.' );
+lunara_import_admin_assert_same( 'Beau Is Afraid', $identity_lookup->get_error_data()['expected']['title'], 'The conflict must retain the saved editorial title.' );
+lunara_import_admin_assert_same( 'Sound of Freedom', $identity_lookup->get_error_data()['candidate']['title'], 'The conflict may disclose the safe provider title for correction.' );
+$identity_import = Lunara_Movie_Import_Admin::rest_import( $identity_request );
+lunara_import_admin_assert_same( 'lunara_movie_import_identity_conflict', $identity_import->get_error_code(), 'The apply boundary must repeat identity validation server-side.' );
+lunara_import_admin_assert_same( $imports_before_identity, count( $GLOBALS['lunara_import_admin_test']['service']->imports ), 'An identity conflict must perform zero Movie writes.' );
+$GLOBALS['lunara_import_admin_test']['service']->preview_status = 'local';
+$local_identity_lookup = Lunara_Movie_Import_Admin::rest_lookup( $identity_request );
+lunara_import_admin_assert_same( 'lunara_movie_import_identity_conflict', $local_identity_lookup->get_error_code(), 'A wrong local Movie must not bypass the saved-title identity guard.' );
+$GLOBALS['lunara_import_admin_test']['service']->preview_status = 'ready';
+
+$GLOBALS['lunara_import_admin_test']['record'] = array(
+    'pairings' => array(
+        array(
+            'role'         => 'counter_program',
+            'film'         => array(),
+            'legacy_value' => 'Inside (2021) — Counter-program | tt14544192',
+        ),
+    ),
+);
+$GLOBALS['lunara_import_admin_test']['service']->candidate_title = 'Bo Burnham: Inside';
+$GLOBALS['lunara_import_admin_test']['service']->candidate_year  = '2021';
+$inside_request = new Lunara_Test_REST_Request(
+    array(
+        'review_id' => 99,
+        'role'      => 'counter_program',
+        'imdb_id'   => 'tt14544192',
+    )
+);
+$inside_lookup = Lunara_Movie_Import_Admin::rest_lookup( $inside_request );
+lunara_import_admin_assert_same( 200, $inside_lookup->status, 'A concise saved title may match a longer canonical title when year agrees.' );
+
+$GLOBALS['lunara_import_admin_test']['record'] = array( 'pairings' => array() );
+$GLOBALS['lunara_import_admin_test']['service']->candidate_title = 'The Godfather';
+$GLOBALS['lunara_import_admin_test']['service']->candidate_year  = '1972';
+
 $GLOBALS['lunara_import_admin_test']['service']->preview_status = 'unavailable';
 $unavailable = Lunara_Movie_Import_Admin::rest_lookup( $request );
 lunara_import_admin_assert_same( 'lunara_movie_import_preview_unavailable', $unavailable->get_error_code(), 'Provider unavailability must remain distinct from a not-found candidate.' );
@@ -496,6 +569,9 @@ lunara_import_admin_assert_true( false !== strpos( $script, '_lunaraRequestGener
 lunara_import_admin_assert_true( false !== strpos( $script, 'showRecovery' ), 'The browser client must surface recoverable local or partial drafts.' );
 lunara_import_admin_assert_true( false !== strpos( $script, 'candidate-local' ), 'The browser client must distinguish an enrichable draft from an immutable local Movie.' );
 lunara_import_admin_assert_true( false !== strpos( $script, 'Enrich existing draft' ), 'The browser client must label the explicit draft-enrichment action clearly.' );
+lunara_import_admin_assert_true( false !== strpos( $script, 'selectImportedMovie' ), 'A newly created draft must be selected without forcing the editor to leave the Review.' );
+lunara_import_admin_assert_true( false !== strpos( $script, 'identity-conflict' ), 'The browser client must visibly distinguish an IMDb/title identity conflict.' );
+lunara_import_admin_assert_true( false !== strpos( $source, 'expected_pairing_identity' ), 'The server must compare provider identity to the saved editorial pairing.' );
 lunara_import_admin_assert_true( file_exists( dirname( __DIR__ ) . '/assets/css/lunara-movie-import-admin.css' ), 'Importer CSS is missing.' );
 
 echo "Movie importer admin regression checks passed.\n";

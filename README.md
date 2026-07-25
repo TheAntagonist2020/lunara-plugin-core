@@ -69,6 +69,13 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.3` makes Debrief Studio tolerant during composition without weakening
+the public contract. Draft Film Dossiers are selectable while a Debrief is
+Incomplete, newly imported drafts are selected in-place, and the saved
+editorial title/year is checked before either lookup or import. A stale IMDb ID
+that resolves to a different film is shown as a conflict and performs no write;
+Ready and Published still require three complete, public Film Dossiers.
+
 Core `0.8.2` extends the one-paste Classic Editor workflow to the established
 `LUNARA FINAL` review format. Whole-number decimal scores such as `4.0/5` are
 valid, reviewed-film identity can come from the structured `LUNARA METADATA`

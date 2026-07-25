@@ -10,6 +10,19 @@
     margin: 0 0 9px;
 }
 
+.lunara-movie-import-editorial-choice {
+    margin: 10px 0;
+    padding: 9px 11px;
+    border: 1px solid #d6c386;
+    border-radius: 4px;
+    background: #fffaf0;
+    color: #3c434a;
+}
+
+.lunara-movie-import-launcher[data-state="identity-conflict"] {
+    border-left-color: #d63638;
+}
+
 .lunara-movie-import-guard {
     margin: 8px 0 0;
     color: #646970;
