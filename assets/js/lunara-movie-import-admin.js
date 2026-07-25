@@ -179,7 +179,10 @@
     function showImported(launcher, movie) {
         var importButton = select(launcher, '[data-lunara-movie-import-draft]');
         var editLink = select(launcher, '[data-lunara-movie-edit-link]');
-        var importedMessage = (config.strings && config.strings.imported) || 'Draft Film Dossier created.';
+        var selected = selectImportedMovie(launcher, movie);
+        var importedMessage = selected
+            ? ((config.strings && config.strings.imported) || 'Draft Film Dossier saved and selected.')
+            : ((config.strings && config.strings.importedManual) || 'Draft Film Dossier saved. Select it above.');
 
         if (importButton) {
             importButton.hidden = true;
@@ -191,6 +194,55 @@
         }
         setStatus(launcher, importedMessage);
         launcher.setAttribute('data-state', 'imported');
+    }
+
+    function selectImportedMovie(launcher, movie) {
+        var field = launcher ? launcher.closest('.acf-field') : null;
+        var input = select(field, 'select');
+        var movieId = movie && Number(movie.id || 0);
+        if (!input || !movieId) {
+            return false;
+        }
+
+        var value = String(movieId);
+        var option = Array.prototype.find.call(input.options || [], function (item) {
+            return item.value === value;
+        });
+        if (!option) {
+            option = document.createElement('option');
+            option.value = value;
+            option.textContent = text(movie.title) + (text(movie.status) === 'draft' ? ' — Draft' : '');
+            input.appendChild(option);
+        }
+        option.selected = true;
+        input.value = value;
+
+        if (window.jQuery) {
+            window.jQuery(input).trigger('change');
+        } else {
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        return input.value === value;
+    }
+
+    function showIdentityConflict(launcher, error) {
+        var details = error && error.details;
+        var candidate = details && details.candidate;
+        if (!candidate) {
+            return false;
+        }
+
+        showCandidate(launcher, candidate);
+        var importButton = select(launcher, '[data-lunara-movie-import-draft]');
+        if (importButton) {
+            importButton.hidden = true;
+        }
+        setStatus(
+            launcher,
+            (config.strings && config.strings.identityHeld) || 'Your saved editorial choice was preserved.'
+        );
+        launcher.setAttribute('data-state', 'identity-conflict');
+        return true;
     }
 
     function showRecovery(launcher, movie) {
@@ -286,7 +338,7 @@
                 setBusy(importLauncher, false);
                 setStatus(importLauncher, '');
                 setAlert(importLauncher, errorMessage(error));
-                if (!showRecovery(importLauncher, error && error.details && error.details.movie)) {
+                if (!showIdentityConflict(importLauncher, error) && !showRecovery(importLauncher, error && error.details && error.details.movie)) {
                     importButton.focus();
                 }
             });
@@ -340,7 +392,7 @@
             setBusy(launcher, false);
             setStatus(launcher, '');
             setAlert(launcher, errorMessage(error));
-            if (!showRecovery(launcher, error && error.details && error.details.movie)) {
+            if (!showIdentityConflict(launcher, error) && !showRecovery(launcher, error && error.details && error.details.movie)) {
                 launcher.setAttribute('data-state', 'error');
             }
             if (input && launcher.getAttribute('data-state') !== 'recovery') {

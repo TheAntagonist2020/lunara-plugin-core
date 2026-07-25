@@ -262,7 +262,7 @@ $movie_fields = array_values( array_filter( $fields, static function( $field ) {
 lunara_studio_assert_same( 3, count( $movie_fields ), 'The Studio must contain exactly three searchable movie selectors.' );
 foreach ( $movie_fields as $field ) {
     lunara_studio_assert_same( array( 'movie' ), $field['post_type'], 'Every selector must target canonical movie entities.' );
-    lunara_studio_assert_same( array( 'publish' ), $field['post_status'], 'Only published movies may be selected for a public Debrief.' );
+    lunara_studio_assert_same( array( 'publish', 'draft' ), $field['post_status'], 'Published and draft Movies must remain selectable while composing.' );
     lunara_studio_assert_same( 1, $field['ui'], 'Every movie selector must use the searchable ACF interface.' );
 }
 
@@ -327,6 +327,13 @@ $incomplete_unrenderable_errors = lunara_studio_validate(
     array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
 );
 lunara_studio_assert_same( array(), $incomplete_unrenderable_errors, 'Incomplete Debriefs with renderability warnings must remain saveable.' );
+
+$incomplete_draft_errors = lunara_studio_validate(
+    'incomplete',
+    array( 14, 12, 13 ),
+    array( 'Theme reason.', 'Counter reason.', 'Career reason.' )
+);
+lunara_studio_assert_same( array(), $incomplete_draft_errors, 'A draft companion must be selectable and saveable while the Debrief remains Incomplete.' );
 
 $attachment_errors = lunara_studio_validate(
     'ready',

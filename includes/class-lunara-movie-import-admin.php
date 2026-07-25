@@ -85,12 +85,14 @@ final class Lunara_Movie_Import_Admin {
                     'lookupBusy'  => __( 'Looking up the film...', 'lunara-core' ),
                     'importBusy'  => __( 'Creating the draft Film Dossier...', 'lunara-core' ),
                     'lookupReady' => __( 'Film found. Review the identity before importing.', 'lunara-core' ),
-                    'localFound'  => __( 'This film is already in the local library. Open its dossier or close this window and select the published record above.', 'lunara-core' ),
+                    'localFound'  => __( 'This film is already in the local library. Select its dossier above; drafts remain available while the Debrief is Incomplete.', 'lunara-core' ),
                     'draftReady'  => __( 'An existing draft can be enriched. Review the provider identity before continuing.', 'lunara-core' ),
                     'createDraft' => __( 'Create draft dossier', 'lunara-core' ),
                     'enrichDraft' => __( 'Enrich existing draft', 'lunara-core' ),
                     'enrichBusy'  => __( 'Enriching the existing draft Film Dossier...', 'lunara-core' ),
-                    'imported'    => __( 'Draft Film Dossier saved. Review and publish it before selecting it here.', 'lunara-core' ),
+                    'imported'    => __( 'Draft Film Dossier saved and selected. Keep editing; publish the dossier before marking the Debrief Ready.', 'lunara-core' ),
+                    'importedManual' => __( 'Draft Film Dossier saved. Select it in the field above, then keep editing.', 'lunara-core' ),
+                    'identityHeld' => __( 'Your saved editorial choice was preserved. The supplied IMDb ID belongs to a different film and cannot be linked.', 'lunara-core' ),
                     'requestFail' => __( 'The request could not be completed. Try again or contact an administrator.', 'lunara-core' ),
                 ),
             )
@@ -112,10 +114,11 @@ final class Lunara_Movie_Import_Admin {
         $review_id = self::current_review_id();
         $roles     = Lunara_Debrief_Contract::roles();
         $label     = $roles[ $role ]['label'] ?? ucwords( str_replace( '_', ' ', $role ) );
+        $expected  = self::expected_pairing_identity( $review_id, $role );
 
-        echo '<div class="lunara-movie-import-launcher" data-lunara-movie-import-launcher data-state="local-first" data-role="' . esc_attr( $role ) . '" data-field-key="' . esc_attr( $field_key ) . '">';
+        echo '<div class="lunara-movie-import-launcher" data-lunara-movie-import-launcher data-state="local-first" data-role="' . esc_attr( $role ) . '" data-field-key="' . esc_attr( $field_key ) . '" data-expected-title="' . esc_attr( $expected['title'] ) . '" data-expected-year="' . esc_attr( $expected['year'] ) . '">';
         echo '<p class="description"><strong>' . esc_html__( 'Local library first.', 'lunara-core' ) . '</strong> ';
-        echo esc_html__( 'Search the published Film Dossiers above. Import only when the film is genuinely missing.', 'lunara-core' );
+        echo esc_html__( 'Search published and draft Film Dossiers above. Drafts are safe while the Debrief remains Incomplete.', 'lunara-core' );
         echo '</p>';
 
         if ( ! self::is_saved_review( $review_id ) ) {
@@ -138,6 +141,12 @@ final class Lunara_Movie_Import_Admin {
         $dialog_id = 'lunara-movie-import-' . sanitize_html_class( $role );
         $title_id  = $dialog_id . '-title';
 
+        if ( '' !== $expected['title'] ) {
+            $expected_label = $expected['title'] . ( $expected['year'] ? ' (' . $expected['year'] . ')' : '' );
+            echo '<p class="lunara-movie-import-editorial-choice"><strong>' . esc_html__( 'Editorial choice:', 'lunara-core' ) . '</strong> ' . esc_html( $expected_label ) . '. ';
+            echo esc_html__( 'Studio will keep this choice unless a verified film identity matches it.', 'lunara-core' ) . '</p>';
+        }
+
         echo '<button type="button" class="button button-secondary lunara-movie-import-open" data-lunara-movie-import-open aria-haspopup="dialog" aria-controls="' . esc_attr( $dialog_id ) . '">';
         echo esc_html__( 'Import a missing film', 'lunara-core' );
         echo '</button>';
@@ -152,7 +161,7 @@ final class Lunara_Movie_Import_Admin {
         echo '<form data-lunara-movie-lookup-form novalidate>';
         echo '<label for="' . esc_attr( $dialog_id . '-imdb' ) . '">' . esc_html__( 'IMDb title ID', 'lunara-core' ) . '</label>';
         echo '<div class="lunara-movie-import-query">';
-        echo '<input id="' . esc_attr( $dialog_id . '-imdb' ) . '" name="imdb_id" type="text" inputmode="text" autocomplete="off" spellcheck="false" pattern="tt[0-9]{6,9}" placeholder="tt0068646" required data-lunara-imdb-input>';
+        echo '<input id="' . esc_attr( $dialog_id . '-imdb' ) . '" name="imdb_id" type="text" inputmode="text" autocomplete="off" spellcheck="false" pattern="tt[0-9]{6,9}" placeholder="tt0068646" value="' . esc_attr( $expected['imdb_title_id'] ) . '" required data-lunara-imdb-input>';
         echo '<button type="submit" class="button button-primary">' . esc_html__( 'Look up film', 'lunara-core' ) . '</button>';
         echo '</div>';
         echo '</form>';
@@ -268,13 +277,21 @@ final class Lunara_Movie_Import_Admin {
             return self::public_service_error( $preview, 'lookup' );
         }
 
+        $candidate = self::candidate_from_preview( $preview );
+        $public    = self::public_candidate( $candidate, $imdb_id );
+        $identity_error = self::identity_conflict_error(
+            absint( $request->get_param( 'review_id' ) ),
+            sanitize_key( $request->get_param( 'role' ) ),
+            $public
+        );
+        if ( is_wp_error( $identity_error ) ) {
+            return $identity_error;
+        }
+
         $preview_error = self::preview_state_error( $preview );
         if ( is_wp_error( $preview_error ) ) {
             return $preview_error;
         }
-
-        $candidate = self::candidate_from_preview( $preview );
-        $public    = self::public_candidate( $candidate, $imdb_id );
         if ( '' === $public['title'] ) {
             return new WP_Error( 'lunara_movie_import_not_found', __( 'No usable film record was returned for that IMDb ID.', 'lunara-core' ), array( 'status' => 404 ) );
         }
@@ -311,11 +328,21 @@ final class Lunara_Movie_Import_Admin {
         if ( is_wp_error( $preview ) ) {
             return self::public_service_error( $preview, 'lookup' );
         }
+        $candidate = self::candidate_from_preview( $preview );
+        $public         = self::public_candidate( $candidate, $imdb_id );
+        $identity_error = self::identity_conflict_error(
+            absint( $request->get_param( 'review_id' ) ),
+            sanitize_key( $request->get_param( 'role' ) ),
+            $public
+        );
+        if ( is_wp_error( $identity_error ) ) {
+            return $identity_error;
+        }
+
         $preview_error = self::preview_state_error( $preview );
         if ( is_wp_error( $preview_error ) ) {
             return $preview_error;
         }
-        $candidate = self::candidate_from_preview( $preview );
         if ( empty( $candidate ) ) {
             return new WP_Error( 'lunara_movie_import_invalid_preview', __( 'The provider did not return an importable film candidate.', 'lunara-core' ), array( 'status' => 422 ) );
         }
@@ -500,6 +527,113 @@ final class Lunara_Movie_Import_Admin {
 
         $http_status = 'conflict' === $status ? 409 : ( 'invalid' === $status ? 400 : 503 );
         return new WP_Error( 'lunara_movie_import_preview_' . ( $status ? $status : 'invalid' ), __( 'The film cannot be imported from this preview.', 'lunara-core' ), array( 'status' => $http_status ) );
+    }
+
+    /**
+     * Read the editor's saved pairing identity without treating a stale IMDb ID
+     * as authority over the title and year they actually chose.
+     *
+     * @param int    $review_id Review post ID.
+     * @param string $role Debrief role.
+     * @return array<string,mixed>
+     */
+    private static function expected_pairing_identity( $review_id, $role ) {
+        $expected = array(
+            'title'         => '',
+            'year'          => 0,
+            'imdb_title_id' => '',
+        );
+        $review_id = absint( $review_id );
+        $role      = sanitize_key( $role );
+        if (
+            ! $review_id
+            || ! class_exists( 'Lunara_Debrief_Contract' )
+            || ! method_exists( 'Lunara_Debrief_Contract', 'record_from_review' )
+        ) {
+            return $expected;
+        }
+
+        $record = Lunara_Debrief_Contract::record_from_review( $review_id );
+        foreach ( is_array( $record['pairings'] ?? null ) ? $record['pairings'] : array() as $pairing ) {
+            if ( ! is_array( $pairing ) || $role !== sanitize_key( $pairing['role'] ?? '' ) ) {
+                continue;
+            }
+
+            $film   = is_array( $pairing['film'] ?? null ) ? $pairing['film'] : array();
+            $legacy = method_exists( 'Lunara_Debrief_Contract', 'parse_pairing_text' )
+                ? Lunara_Debrief_Contract::parse_pairing_text( $pairing['legacy_value'] ?? '' )
+                : array();
+            $expected['title'] = sanitize_text_field( $legacy['title'] ?? $film['title'] ?? '' );
+            $expected['year']  = absint( $legacy['year'] ?? $film['year'] ?? 0 );
+            $expected['imdb_title_id'] = self::sanitize_imdb_id( $legacy['imdb_id'] ?? $film['imdb_title_id'] ?? '' );
+            break;
+        }
+
+        return $expected;
+    }
+
+    /**
+     * Stop an IMDb identifier from replacing an incompatible editorial choice.
+     *
+     * @param int                 $review_id Review post ID.
+     * @param string              $role Debrief role.
+     * @param array<string,mixed> $candidate Provider candidate safe for wp-admin.
+     * @return true|WP_Error
+     */
+    private static function identity_conflict_error( $review_id, $role, $candidate ) {
+        $expected        = self::expected_pairing_identity( $review_id, $role );
+        $candidate_title = sanitize_text_field( $candidate['title'] ?? '' );
+        $candidate_year  = absint( $candidate['year'] ?? 0 );
+
+        if ( '' === $expected['title'] || '' === $candidate_title ) {
+            return true;
+        }
+
+        $title_matches = self::identity_titles_match( $expected['title'], $candidate_title );
+        $year_matches  = ! $expected['year'] || ! $candidate_year || $expected['year'] === $candidate_year;
+        if ( $title_matches && $year_matches ) {
+            return true;
+        }
+
+        $expected_label  = $expected['title'] . ( $expected['year'] ? ' (' . $expected['year'] . ')' : '' );
+        $candidate_label = $candidate_title . ( $candidate_year ? ' (' . $candidate_year . ')' : '' );
+        return new WP_Error(
+            'lunara_movie_import_identity_conflict',
+            sprintf(
+                /* translators: 1: IMDb ID, 2: returned film, 3: saved editorial film. */
+                __( 'IMDb %1$s resolves to %2$s, not your saved editorial choice %3$s. Your choice was not changed.', 'lunara-core' ),
+                sanitize_text_field( $candidate['imdb_title_id'] ?? '' ),
+                $candidate_label,
+                $expected_label
+            ),
+            array(
+                'status'    => 409,
+                'expected'  => $expected,
+                'candidate' => $candidate,
+            )
+        );
+    }
+
+    /** @param string $left First title. @param string $right Second title. @return bool */
+    private static function identity_titles_match( $left, $right ) {
+        $left  = self::normalize_identity_title( $left );
+        $right = self::normalize_identity_title( $right );
+        if ( '' === $left || '' === $right ) {
+            return false;
+        }
+        if ( $left === $right ) {
+            return true;
+        }
+
+        return false !== strpos( ' ' . $left . ' ', ' ' . $right . ' ' )
+            || false !== strpos( ' ' . $right . ' ', ' ' . $left . ' ' );
+    }
+
+    /** @param string $title Film title. @return string */
+    private static function normalize_identity_title( $title ) {
+        $title = function_exists( 'remove_accents' ) ? remove_accents( $title ) : $title;
+        $title = strtolower( sanitize_text_field( $title ) );
+        return trim( (string) preg_replace( '/[^a-z0-9]+/', ' ', $title ) );
     }
 
     /**
