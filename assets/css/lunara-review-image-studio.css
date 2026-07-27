@@ -1,0 +1,116 @@
+.lunara-image-studio {
+	--lunara-ink: #081724;
+	--lunara-panel: #112332;
+	--lunara-gold: #d7b85d;
+	--lunara-line: rgba(215, 184, 93, 0.32);
+}
+
+.lunara-image-studio-intro,
+.lunara-image-studio-link,
+.lunara-image-studio-warning {
+	max-width: 920px;
+}
+
+.lunara-image-studio-warning {
+	padding: 10px 12px;
+	border-left: 3px solid #dba617;
+	background: #fff8e5;
+}
+
+.lunara-image-studio-grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 16px;
+	margin-top: 18px;
+}
+
+.lunara-image-studio-card {
+	padding: 16px;
+	border: 1px solid var(--lunara-line);
+	border-radius: 8px;
+	background: var(--lunara-ink);
+	color: #e8eef3;
+}
+
+.lunara-image-studio-card header h4 {
+	margin: 0 0 4px;
+	color: var(--lunara-gold);
+	font-size: 15px;
+}
+
+.lunara-image-studio-card header p {
+	min-height: 36px;
+	margin: 0 0 12px;
+	color: #b8c7d3;
+}
+
+.lunara-image-studio-preview {
+	display: grid;
+	place-items: center;
+	min-height: 150px;
+	margin-bottom: 12px;
+	overflow: hidden;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 6px;
+	background: var(--lunara-panel);
+	color: #91a2af;
+}
+
+.lunara-image-studio-preview img {
+	display: block;
+	width: 100%;
+	height: 190px;
+	object-fit: cover;
+}
+
+.lunara-image-studio-card[data-slot="card"] .lunara-image-studio-preview img {
+	width: auto;
+	max-width: 100%;
+	object-fit: contain;
+}
+
+.lunara-image-studio-mode-label {
+	display: block;
+	margin-bottom: 5px;
+	font-weight: 600;
+}
+
+.lunara-image-studio-mode {
+	width: 100%;
+	margin-bottom: 12px;
+}
+
+.lunara-image-studio-buttons,
+.lunara-image-studio-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: center;
+}
+
+.lunara-image-studio-actions {
+	margin-top: 14px;
+	padding-top: 12px;
+	border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.lunara-image-studio-caption-label {
+	display: block;
+	margin: 14px 0 5px;
+	font-weight: 600;
+}
+
+.lunara-image-studio-actions label {
+	display: block;
+	width: 100%;
+}
+
+.lunara-image-studio-card[data-mode="off"] .lunara-image-studio-preview {
+	opacity: 0.42;
+}
+
+@media (max-width: 782px) {
+	.lunara-image-studio-grid {
+		grid-template-columns: 1fr;
+	}
+}
