@@ -69,7 +69,15 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
-Core `0.8.4` turns the existing Classic Editor Debrief harvester into an
+Core `0.8.5` retains the Classic Editor Debrief harvester and adds the Review
+Image Studio: Auto / Custom / Off control for five editorial image positions,
+native Media Library selection, provider-image localization, and explicit
+Review-to-Film-Dossier poster/backdrop sharing. After a Review parser or save
+writes a valid IMDb title ID, one cached background provider lookup safely
+reuses or creates the draft Film Dossier, fills only blank factual data, and
+localizes available poster/backdrop art. Public page requests never call the
+movie providers, and existing curated images are never replaced automatically.
+Core `0.8.4` turned the existing Classic Editor Debrief harvester into an
 immediate editor workflow. When the Review editor contains a valid
 `LUNARA DEBRIEF` section, a private read-only preview request fills only empty
 Theme Echo, Counter-Program, Career Context, and matching reason controls in the

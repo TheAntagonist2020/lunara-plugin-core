@@ -446,6 +446,10 @@ final class Lunara_Review_Draft_Import_Admin {
             }
         }
 
+        if ( class_exists( 'Lunara_Review_Image_Studio' ) ) {
+            Lunara_Review_Image_Studio::queue_review( $review_id );
+        }
+
         return rest_ensure_response(
             array(
                 'valid'           => true,
@@ -578,6 +582,10 @@ final class Lunara_Review_Draft_Import_Admin {
             if ( is_object( $core ) && method_exists( $core, 'sync_review_archive_terms' ) ) {
                 $core->sync_review_archive_terms( $review_id );
             }
+        }
+
+        if ( class_exists( 'Lunara_Review_Image_Studio' ) ) {
+            Lunara_Review_Image_Studio::queue_review( $review_id );
         }
     }
 
