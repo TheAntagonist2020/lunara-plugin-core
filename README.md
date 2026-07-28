@@ -69,6 +69,13 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.6` completes the existing `review` custom post type as a singular
+Review editorial workspace without migrating content or changing the public
+`/reviews/` archive. WordPress now presents a clearly named Review Library with
+poster, film identity, score, Debrief readiness, director, year, sorting, and
+filtering controls. Existing Review IDs, permalinks, ACF/Debrief data, images,
+taxonomies, revisions, and REST consumers retain the same canonical contracts.
+
 Core `0.8.5` retains the Classic Editor Debrief harvester and adds the Review
 Image Studio: Auto / Custom / Off control for five editorial image positions,
 native Media Library selection, provider-image localization, and explicit
