@@ -1,0 +1,264 @@
+.lunara-review-editor {
+	--lunara-studio-ink: #071522;
+	--lunara-studio-surface: #0d2030;
+	--lunara-studio-card: #ffffff;
+	--lunara-studio-gold: #d5ad52;
+	--lunara-studio-gold-soft: #f4e5b7;
+	--lunara-studio-line: #d9dde3;
+	--lunara-studio-muted: #59636f;
+}
+
+.lunara-review-workspace[hidden],
+.lunara-review-workspace__panel[hidden],
+.lunara-review-workspace__tab[hidden],
+.lunara-review-workspace__empty[hidden] {
+	display: none !important;
+}
+
+.lunara-review-workspace {
+	margin: 24px 0 18px;
+	border: 1px solid #142f44;
+	border-radius: 10px;
+	background: #f6f7f7;
+	box-shadow: 0 12px 32px rgba( 7, 21, 34, 0.12 );
+	overflow: hidden;
+}
+
+.lunara-review-workspace__masthead {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 24px;
+	padding: 25px 28px 22px;
+	color: #f8f3e7;
+	background:
+		radial-gradient( circle at 88% 15%, rgba( 213, 173, 82, 0.18 ), transparent 32% ),
+		linear-gradient( 135deg, var( --lunara-studio-ink ), var( --lunara-studio-surface ) );
+}
+
+.lunara-review-workspace__identity {
+	max-width: 760px;
+}
+
+.lunara-review-workspace__eyebrow {
+	display: block;
+	margin-bottom: 7px;
+	color: var( --lunara-studio-gold );
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0.18em;
+	text-transform: uppercase;
+}
+
+.lunara-review-workspace__masthead h2 {
+	margin: 0;
+	color: #fff;
+	font-family: var( --lunara-font-display, "Canela Deck", "Canela", "GT Sectra", Georgia, serif );
+	font-size: 31px;
+	font-weight: 500;
+	line-height: 1.08;
+}
+
+.lunara-review-workspace__masthead p {
+	max-width: 680px;
+	margin: 8px 0 0;
+	color: #cbd5de;
+	font-size: 14px;
+	line-height: 1.55;
+}
+
+.lunara-review-workspace__copy-link {
+	flex: 0 0 auto;
+	padding: 9px 13px;
+	border: 1px solid rgba( 213, 173, 82, 0.5 );
+	border-radius: 999px;
+	color: var( --lunara-studio-gold-soft );
+	font-size: 12px;
+	font-weight: 700;
+	text-decoration: none;
+}
+
+.lunara-review-workspace__copy-link:hover,
+.lunara-review-workspace__copy-link:focus {
+	border-color: var( --lunara-studio-gold );
+	color: #fff;
+}
+
+.lunara-review-workspace__assurances {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 12px 18px;
+	border-bottom: 1px solid var( --lunara-studio-line );
+	background: #fff;
+}
+
+.lunara-review-workspace__assurances span {
+	padding: 5px 9px;
+	border-radius: 999px;
+	background: #edf7f0;
+	color: #17633a;
+	font-size: 11px;
+	font-weight: 700;
+}
+
+.lunara-review-workspace__assurances span::before {
+	content: "\2713";
+	margin-right: 5px;
+}
+
+.lunara-review-workspace__tabs {
+	display: grid;
+	grid-template-columns: repeat( 4, minmax( 0, 1fr ) );
+	gap: 1px;
+	padding: 1px;
+	background: var( --lunara-studio-line );
+}
+
+.lunara-review-workspace__tab {
+	position: relative;
+	min-height: 80px;
+	padding: 14px 16px;
+	border: 0;
+	border-bottom: 3px solid transparent;
+	background: #fff;
+	color: #1d2935;
+	cursor: pointer;
+	text-align: left;
+}
+
+.lunara-review-workspace__tab strong,
+.lunara-review-workspace__tab span {
+	display: block;
+}
+
+.lunara-review-workspace__tab strong {
+	margin-bottom: 4px;
+	font-size: 13px;
+}
+
+.lunara-review-workspace__tab span {
+	color: var( --lunara-studio-muted );
+	font-size: 11px;
+	line-height: 1.35;
+}
+
+.lunara-review-workspace__tab:hover {
+	background: #fbf8ef;
+}
+
+.lunara-review-workspace__tab.is-active {
+	border-bottom-color: var( --lunara-studio-gold );
+	background: #fffaf0;
+	box-shadow: inset 0 3px 0 rgba( 213, 173, 82, 0.14 );
+}
+
+.lunara-review-workspace__tab:focus-visible {
+	z-index: 2;
+	outline: 2px solid #2271b1;
+	outline-offset: -3px;
+}
+
+.lunara-review-workspace__stage {
+	padding: 20px;
+}
+
+#poststuff .lunara-review-workspace__box {
+	min-width: 0;
+	margin: 0 0 16px;
+	border: 1px solid #cfd5dc;
+	border-radius: 7px;
+	background: var( --lunara-studio-card );
+	box-shadow: 0 3px 11px rgba( 7, 21, 34, 0.06 );
+	overflow: hidden;
+}
+
+#poststuff .lunara-review-workspace__box:last-child {
+	margin-bottom: 0;
+}
+
+#poststuff .lunara-review-workspace__box .postbox-header {
+	border-bottom-color: #e2e5e9;
+	background: #fbfcfd;
+}
+
+#poststuff .lunara-review-workspace__box .hndle {
+	color: #142433;
+	font-size: 14px;
+}
+
+#poststuff .lunara-review-workspace__box > .inside {
+	display: block !important;
+	margin: 0;
+	padding: 18px 20px 20px;
+}
+
+#poststuff .lunara-review-workspace__box .handle-actions,
+#poststuff .lunara-review-workspace__box .handlediv,
+#poststuff .lunara-review-workspace__box .handle-order-higher,
+#poststuff .lunara-review-workspace__box .handle-order-lower {
+	display: none !important;
+}
+
+#poststuff .lunara-review-workspace #lunara_review_details_meta .inside {
+	display: grid !important;
+	grid-template-columns: repeat( 3, minmax( 0, 1fr ) );
+	gap: 16px;
+}
+
+#poststuff .lunara-review-workspace #lunara_review_details_meta .inside > p {
+	margin: 0;
+}
+
+.lunara-review-workspace__empty {
+	margin: 20px;
+	padding: 14px 16px;
+	border-left: 4px solid var( --lunara-studio-gold );
+	background: #fff;
+}
+
+@media screen and ( max-width: 960px ) {
+	.lunara-review-workspace__tabs {
+		grid-template-columns: repeat( 2, minmax( 0, 1fr ) );
+	}
+}
+
+@media screen and ( max-width: 782px ) {
+	.lunara-review-workspace {
+		margin-top: 18px;
+	}
+
+	.lunara-review-workspace__masthead {
+		align-items: flex-start;
+		flex-direction: column;
+		padding: 22px 20px;
+	}
+
+	.lunara-review-workspace__masthead h2 {
+		font-size: 27px;
+	}
+
+	.lunara-review-workspace__tabs {
+		grid-template-columns: 1fr;
+	}
+
+	.lunara-review-workspace__tab {
+		min-height: 0;
+	}
+
+	.lunara-review-workspace__stage {
+		padding: 12px;
+	}
+
+	#poststuff .lunara-review-workspace #lunara_review_details_meta .inside {
+		grid-template-columns: 1fr;
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	.lunara-review-workspace *,
+	.lunara-review-workspace *::before,
+	.lunara-review-workspace *::after {
+		scroll-behavior: auto !important;
+	}
+}

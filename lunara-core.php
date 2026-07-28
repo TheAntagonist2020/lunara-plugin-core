@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.8.6
+ * Version: 0.8.7
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.8.6' );
+define( 'LUNARA_CORE_VERSION', '0.8.7' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -73,6 +73,8 @@ final class Lunara_Core {
             Lunara_Review_Draft_Import_Admin::init();
             require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-admin.php';
             Lunara_Review_Admin::init();
+            require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-workspace.php';
+            Lunara_Review_Workspace::init();
         }
 
         // Entity graph (Design Spec 2.0 §4): movie / person / ledger_entry
