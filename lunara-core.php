@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.8.5
+ * Version: 0.8.6
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.8.5' );
+define( 'LUNARA_CORE_VERSION', '0.8.6' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -71,6 +71,8 @@ final class Lunara_Core {
             Lunara_Movie_Import_Admin::init();
             self::load_review_draft_import_admin();
             Lunara_Review_Draft_Import_Admin::init();
+            require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-admin.php';
+            Lunara_Review_Admin::init();
         }
 
         // Entity graph (Design Spec 2.0 §4): movie / person / ledger_entry
@@ -243,27 +245,68 @@ final class Lunara_Core {
     }
 
     /**
-     * Register the Reviews post type.
+     * Register the canonical Review post type.
+     *
+     * The internal `review` key and `/reviews/` route are longstanding public
+     * contracts. This registration upgrades the editorial workspace in place;
+     * existing posts, metadata, URLs, and relationships require no migration.
      */
     public static function register_reviews_cpt() {
         register_post_type(
             'review',
             array(
                 'labels' => array(
-                    'name'          => __( 'Reviews', 'lunara-core' ),
-                    'singular_name' => __( 'Review', 'lunara-core' ),
-                    'add_new'       => __( 'Add New Review', 'lunara-core' ),
-                    'add_new_item'  => __( 'Add New Review', 'lunara-core' ),
-                    'edit_item'     => __( 'Edit Review', 'lunara-core' ),
-                    'menu_name'     => __( 'Reviews', 'lunara-core' ),
+                    'name'                     => __( 'Review', 'lunara-core' ),
+                    'singular_name'            => __( 'Review', 'lunara-core' ),
+                    'menu_name'                => __( 'Review', 'lunara-core' ),
+                    'name_admin_bar'           => __( 'Review', 'lunara-core' ),
+                    'all_items'                => __( 'Review Library', 'lunara-core' ),
+                    'add_new'                  => __( 'Add Review', 'lunara-core' ),
+                    'add_new_item'             => __( 'Add New Review', 'lunara-core' ),
+                    'new_item'                 => __( 'New Review', 'lunara-core' ),
+                    'edit_item'                => __( 'Edit Review', 'lunara-core' ),
+                    'view_item'                => __( 'View Review', 'lunara-core' ),
+                    'view_items'               => __( 'View Reviews', 'lunara-core' ),
+                    'search_items'             => __( 'Search Review Library', 'lunara-core' ),
+                    'not_found'                => __( 'No reviews found.', 'lunara-core' ),
+                    'not_found_in_trash'       => __( 'No reviews found in Trash.', 'lunara-core' ),
+                    'archives'                 => __( 'Review Archive', 'lunara-core' ),
+                    'attributes'               => __( 'Review Attributes', 'lunara-core' ),
+                    'insert_into_item'         => __( 'Insert into review', 'lunara-core' ),
+                    'uploaded_to_this_item'    => __( 'Uploaded to this review', 'lunara-core' ),
+                    'featured_image'           => __( 'Review Poster', 'lunara-core' ),
+                    'set_featured_image'       => __( 'Set review poster', 'lunara-core' ),
+                    'remove_featured_image'    => __( 'Remove review poster', 'lunara-core' ),
+                    'use_featured_image'       => __( 'Use as review poster', 'lunara-core' ),
+                    'filter_items_list'        => __( 'Filter Review Library', 'lunara-core' ),
+                    'items_list_navigation'    => __( 'Review Library navigation', 'lunara-core' ),
+                    'items_list'               => __( 'Review Library', 'lunara-core' ),
+                    'item_published'           => __( 'Review published.', 'lunara-core' ),
+                    'item_published_privately' => __( 'Review published privately.', 'lunara-core' ),
+                    'item_reverted_to_draft'   => __( 'Review reverted to draft.', 'lunara-core' ),
+                    'item_scheduled'           => __( 'Review scheduled.', 'lunara-core' ),
+                    'item_updated'             => __( 'Review updated.', 'lunara-core' ),
                 ),
-                'public'       => true,
-                'has_archive'  => true,
-                'rewrite'      => array( 'slug' => 'reviews' ),
-                'menu_icon'    => 'dashicons-star-filled',
-                'supports'     => array( 'title', 'editor', 'thumbnail', 'excerpt', 'revisions' ),
-                'taxonomies'   => array( 'category', 'post_tag' ),
-                'show_in_rest' => true,
+                'description'       => __( 'Lunara Film criticism, review metadata, Debrief pairings, and editorial imagery.', 'lunara-core' ),
+                'public'            => true,
+                'publicly_queryable'=> true,
+                'show_ui'           => true,
+                'show_in_menu'      => true,
+                'show_in_nav_menus' => true,
+                'show_in_admin_bar' => true,
+                'has_archive'       => true,
+                'rewrite'           => array( 'slug' => 'reviews' ),
+                'query_var'         => true,
+                'menu_position'     => 20,
+                'menu_icon'         => 'dashicons-star-filled',
+                'capability_type'   => 'post',
+                'map_meta_cap'      => true,
+                'hierarchical'      => false,
+                'supports'          => array( 'title', 'editor', 'author', 'thumbnail', 'excerpt', 'revisions' ),
+                'taxonomies'        => array( 'category', 'post_tag' ),
+                'show_in_rest'      => true,
+                'can_export'        => true,
+                'delete_with_user'  => false,
             )
         );
     }
@@ -282,6 +325,7 @@ final class Lunara_Core {
                 ),
                 'public'       => true,
                 'hierarchical' => false,
+                'show_admin_column' => true,
                 'show_in_rest' => true,
                 'rewrite'      => array( 'slug' => 'director' ),
             )
@@ -297,6 +341,7 @@ final class Lunara_Core {
                 ),
                 'public'       => true,
                 'hierarchical' => false,
+                'show_admin_column' => true,
                 'show_in_rest' => true,
                 'rewrite'      => array( 'slug' => 'review-year' ),
             )
