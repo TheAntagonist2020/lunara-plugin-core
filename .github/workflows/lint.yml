@@ -54,6 +54,7 @@ jobs:
           set -e
           php tests/review-draft-parser-regression.php
           php tests/review-draft-import-admin-regression.php
+          php tests/review-workspace-regression.php
 
       - name: PHP syntax
         run: |

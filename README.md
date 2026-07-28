@@ -69,6 +69,15 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.7` adds a progressively enhanced Review Studio to the Classic Editor.
+The article editor remains unchanged, while Review Intake, Film Details,
+Debrief Studio, and Review Image Studio become one keyboard-accessible tabbed
+workspace directly beneath it. The shell moves the existing field panels in
+the browser instead of copying, unregistering, or resaving them, so every
+established nonce, parser, ACF field, image control, and save hook retains its
+original data contract. If its JavaScript is unavailable, WordPress displays
+the original meta boxes in their normal positions.
+
 Core `0.8.6` completes the existing `review` custom post type as a singular
 Review editorial workspace without migrating content or changing the public
 `/reviews/` archive. WordPress now presents a clearly named Review Library with
@@ -227,6 +236,7 @@ editor WordPress requests.
 - Run `php tests/review-draft-parser-regression.php`.
 - Run `php tests/review-draft-document-regression.php`.
 - Run `php tests/review-draft-import-admin-regression.php`.
+- Run `php tests/review-workspace-regression.php`.
 - Run PHP lint on `lunara-core.php`.
 - Confirm the WordPress plugins screen shows `Lunara Core` active.
 - Confirm public Review routes and admin Review edit screens still load.
