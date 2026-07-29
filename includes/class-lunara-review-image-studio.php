@@ -644,13 +644,30 @@ final class Lunara_Review_Image_Studio {
 	 *
 	 * @param int    $review_id Review ID.
 	 * @param string $imdb_id Canonical IMDb title ID.
+	 * @param string $policy Fill missing art or refresh provider-managed art.
+	 * @return array<string,mixed>
 	 */
-	public static function hydrate_review_identity( $review_id, $imdb_id ) {
+	public static function hydrate_review_identity( $review_id, $imdb_id, $policy = 'fill_missing' ) {
 		$review_id = absint( $review_id );
 		$imdb_id   = self::normalize_imdb_id( $imdb_id );
+		$policy    = 'refresh_managed' === $policy ? 'refresh_managed' : 'fill_missing';
 		if ( ! $review_id || '' === $imdb_id || 'review' !== get_post_type( $review_id ) ) {
-			return;
+			return array(
+				'review_id' => $review_id,
+				'imdb_id'   => $imdb_id,
+				'status'    => 'invalid_identity',
+				'conflicts' => array(),
+			);
 		}
+
+		$report = array(
+			'review_id' => $review_id,
+			'imdb_id'   => $imdb_id,
+			'status'    => 'running',
+			'poster'    => 'unchanged',
+			'backdrop'  => 'unchanged',
+			'conflicts' => array(),
+		);
 
 		update_post_meta( $review_id, self::HYDRATE_STATUS, 'running' );
 		update_post_meta( $review_id, self::HYDRATE_TIME, time() );
@@ -720,33 +737,47 @@ final class Lunara_Review_Image_Studio {
 				}
 			}
 
-			$poster_id = $movie_id ? get_post_thumbnail_id( $movie_id ) : 0;
-			if ( ! $poster_id && '' !== $poster_url ) {
-				$poster_id = self::sideload_image( $poster_url, $movie_id ? $movie_id : $review_id, self::review_film_title( $review_id ) . ' poster' );
-				$poster_id = is_wp_error( $poster_id ) ? 0 : absint( $poster_id );
-				if ( $movie_id && $poster_id ) {
-					set_post_thumbnail( $movie_id, $poster_id );
-				}
+			$poster_current = $movie_id
+				? get_post_thumbnail_id( $movie_id )
+				: absint( get_post_meta( $review_id, self::ID_PREFIX . 'card_id', true ) );
+			$poster_result  = self::reconcile_provider_artwork(
+				$poster_current,
+				$poster_url,
+				$movie_id ? $movie_id : $review_id,
+				self::review_film_title( $review_id ) . ' poster',
+				$policy
+			);
+			$poster_id      = absint( $poster_result['attachment_id'] );
+			$report['poster'] = $poster_result['action'];
+			if ( ! empty( $poster_result['conflict'] ) ) {
+				$report['conflicts'][] = 'poster:' . $poster_result['conflict'];
 			}
-			if ( $poster_id && ! get_post_thumbnail_id( $review_id ) ) {
-				set_post_thumbnail( $review_id, $poster_id );
-			}
-
-			$backdrop_id = $movie_id ? absint( get_post_meta( $movie_id, 'backdrop_image', true ) ) : 0;
-			if ( ! $backdrop_id && '' !== $backdrop_url ) {
-				$backdrop_id = self::sideload_image( $backdrop_url, $movie_id ? $movie_id : $review_id, self::review_film_title( $review_id ) . ' backdrop' );
-				$backdrop_id = is_wp_error( $backdrop_id ) ? 0 : absint( $backdrop_id );
-				if ( $movie_id && $backdrop_id ) {
-					self::update_dossier_backdrop( $movie_id, $backdrop_id );
-				}
+			if ( $movie_id && $poster_id && $poster_id !== absint( $poster_current ) ) {
+				set_post_thumbnail( $movie_id, $poster_id );
 			}
 
-			if ( ! $movie_id && $poster_id ) {
-				update_post_meta( $review_id, self::ID_PREFIX . 'card_id', $poster_id );
+			$backdrop_current = $movie_id
+				? absint( get_post_meta( $movie_id, 'backdrop_image', true ) )
+				: absint( get_post_meta( $review_id, self::ID_PREFIX . 'hero_banner_id', true ) );
+			$backdrop_result  = self::reconcile_provider_artwork(
+				$backdrop_current,
+				$backdrop_url,
+				$movie_id ? $movie_id : $review_id,
+				self::review_film_title( $review_id ) . ' backdrop',
+				$policy
+			);
+			$backdrop_id      = absint( $backdrop_result['attachment_id'] );
+			$report['backdrop'] = $backdrop_result['action'];
+			if ( ! empty( $backdrop_result['conflict'] ) ) {
+				$report['conflicts'][] = 'backdrop:' . $backdrop_result['conflict'];
 			}
-			if ( ! $movie_id && $backdrop_id ) {
-				update_post_meta( $review_id, self::ID_PREFIX . 'hero_banner_id', $backdrop_id );
+			if ( $movie_id && $backdrop_id && $backdrop_id !== absint( $backdrop_current ) ) {
+				self::update_dossier_backdrop( $movie_id, $backdrop_id );
 			}
+
+			self::reconcile_review_artwork_pointer( $review_id, 'card', $poster_id, $movie_id, $report );
+			self::reconcile_review_artwork_pointer( $review_id, 'hero_banner', $backdrop_id, $movie_id, $report );
+			self::reconcile_review_featured_image( $review_id, $poster_id, $policy, $report );
 
 			if ( $movie_id && $poster_id && $backdrop_id ) {
 				$status = 'ready';
@@ -759,10 +790,27 @@ final class Lunara_Review_Image_Studio {
 			}
 			update_post_meta( $review_id, self::HYDRATED_IMDB, $imdb_id );
 			update_post_meta( $review_id, self::HYDRATE_STATUS, $status );
+			$report['status']   = $status;
+			$report['movie_id'] = $movie_id;
+			return $report;
 		} catch ( Throwable $error ) {
 			update_post_meta( $review_id, self::HYDRATE_STATUS, 'error' );
 			do_action( 'lunara_review_image_hydration_failed', $review_id, $imdb_id, $error );
+			$report['status'] = 'error';
+			$report['error']  = sanitize_text_field( $error->getMessage() );
+			return $report;
 		}
+	}
+
+	/**
+	 * Run an explicit exact-identity refresh for the artwork backfill worker.
+	 *
+	 * @param int $review_id Review ID.
+	 * @return array<string,mixed>
+	 */
+	public static function refresh_review_artwork( $review_id ) {
+		$imdb_id = self::normalize_imdb_id( get_post_meta( $review_id, '_lunara_imdb_title_id', true ) );
+		return self::hydrate_review_identity( $review_id, $imdb_id, 'refresh_managed' );
 	}
 
 	/**
@@ -870,6 +918,153 @@ final class Lunara_Review_Image_Studio {
 			return (bool) update_field( 'field_lunara_movie_backdrop_image', $attachment_id, $movie_id );
 		}
 		return false !== update_post_meta( $movie_id, 'backdrop_image', $attachment_id );
+	}
+
+	/**
+	 * Reconcile one provider image without overwriting curated Media Library art.
+	 *
+	 * Only attachments previously localized from TMDb are refreshable. An
+	 * attachment with no TMDb source marker is treated as editorially curated
+	 * and is reported for human review instead of being replaced.
+	 *
+	 * @param int    $current_id Current attachment ID.
+	 * @param string $provider_url Exact-identity provider URL.
+	 * @param int    $parent_id Parent post ID.
+	 * @param string $description Attachment description.
+	 * @param string $policy Reconciliation policy.
+	 * @return array<string,mixed>
+	 */
+	private static function reconcile_provider_artwork( $current_id, $provider_url, $parent_id, $description, $policy ) {
+		$current_id  = absint( $current_id );
+		$provider_url = esc_url_raw( $provider_url );
+		$current_url = $current_id ? esc_url_raw( get_post_meta( $current_id, self::SOURCE_META, true ) ) : '';
+
+		if ( $current_id && '' === $provider_url ) {
+			return array( 'attachment_id' => $current_id, 'action' => 'kept_no_provider_art', 'conflict' => '' );
+		}
+		if ( $current_id && $current_url === $provider_url ) {
+			return array( 'attachment_id' => $current_id, 'action' => 'verified', 'conflict' => '' );
+		}
+		if ( $current_id && ( 'refresh_managed' !== $policy || ! self::is_tmdb_managed_attachment( $current_id ) ) ) {
+			return array( 'attachment_id' => $current_id, 'action' => 'curated_protected', 'conflict' => 'curated_art_preserved' );
+		}
+		if ( '' === $provider_url ) {
+			return array( 'attachment_id' => 0, 'action' => 'missing_provider_art', 'conflict' => '' );
+		}
+
+		$attachment_id = self::sideload_image( $provider_url, $parent_id, $description );
+		if ( is_wp_error( $attachment_id ) ) {
+			return array( 'attachment_id' => $current_id, 'action' => 'import_error', 'conflict' => $attachment_id->get_error_code() );
+		}
+
+		return array(
+			'attachment_id' => absint( $attachment_id ),
+			'action'        => $current_id ? 'provider_refreshed' : 'provider_imported',
+			'conflict'      => '',
+		);
+	}
+
+	/**
+	 * Make automatic Review slots inherit their exact linked Dossier artwork.
+	 *
+	 * @param int                  $review_id Review ID.
+	 * @param string               $slot Review Image Studio slot.
+	 * @param int                  $attachment_id Reconciled attachment ID.
+	 * @param int                  $movie_id Linked Dossier ID.
+	 * @param array<string,mixed> &$report Mutable audit report.
+	 */
+	private static function reconcile_review_artwork_pointer( $review_id, $slot, $attachment_id, $movie_id, &$report ) {
+		if ( self::is_review_slot_editorially_protected( $review_id, $slot ) || 'off' === self::get_mode( $review_id, $slot ) ) {
+			return;
+		}
+
+		$meta_key   = self::ID_PREFIX . $slot . '_id';
+		$current_id = absint( get_post_meta( $review_id, $meta_key, true ) );
+		if ( $movie_id ) {
+			if ( $current_id && self::is_tmdb_managed_attachment( $current_id ) ) {
+				delete_post_meta( $review_id, $meta_key );
+			} elseif ( $current_id && $current_id !== absint( $attachment_id ) ) {
+				$report['conflicts'][] = $slot . ':review_auto_art_preserved';
+			}
+			return;
+		}
+
+		if ( $attachment_id && ( ! $current_id || self::is_tmdb_managed_attachment( $current_id ) ) ) {
+			update_post_meta( $review_id, $meta_key, absint( $attachment_id ) );
+		}
+	}
+
+	/**
+	 * Keep the Review thumbnail aligned unless Dalton selected custom artwork.
+	 *
+	 * @param int                  $review_id Review ID.
+	 * @param int                  $poster_id Reconciled poster ID.
+	 * @param string               $policy Reconciliation policy.
+	 * @param array<string,mixed> &$report Mutable audit report.
+	 */
+	private static function reconcile_review_featured_image( $review_id, $poster_id, $policy, &$report ) {
+		if ( ! $poster_id || self::is_review_slot_editorially_protected( $review_id, 'card' ) ) {
+			return;
+		}
+
+		$current_id = get_post_thumbnail_id( $review_id );
+		if ( ! $current_id || ( 'refresh_managed' === $policy && self::is_tmdb_managed_attachment( $current_id ) ) ) {
+			if ( absint( $current_id ) !== absint( $poster_id ) ) {
+				set_post_thumbnail( $review_id, $poster_id );
+			}
+			return;
+		}
+
+		if ( absint( $current_id ) !== absint( $poster_id ) ) {
+			$report['conflicts'][] = 'featured_image:curated_art_preserved';
+		}
+	}
+
+	/**
+	 * Determine whether an attachment was localized from TMDb by Lunara.
+	 *
+	 * @param int $attachment_id Attachment ID.
+	 * @return bool
+	 */
+	private static function is_tmdb_managed_attachment( $attachment_id ) {
+		$source = trim( (string) get_post_meta( absint( $attachment_id ), self::SOURCE_META, true ) );
+		if ( '' === $source ) {
+			return false;
+		}
+
+		$host = strtolower( (string) wp_parse_url( $source, PHP_URL_HOST ) );
+		return 'image.tmdb.org' === $host || '.image.tmdb.org' === substr( $host, -15 );
+	}
+
+	/**
+	 * Distinguish an explicit/curated Custom slot from legacy provider art.
+	 *
+	 * Older automatic imports can have an attachment pointer but no saved mode;
+	 * get_mode() correctly exposes those as Custom for safety in the editor. The
+	 * bulk reconciler may still treat the pointer as automatic only when its
+	 * source marker proves that Lunara imported it from TMDb.
+	 *
+	 * @param int    $review_id Review ID.
+	 * @param string $slot Review Image Studio slot.
+	 * @return bool
+	 */
+	private static function is_review_slot_editorially_protected( $review_id, $slot ) {
+		$slots  = self::slots();
+		$stored = sanitize_key( (string) get_post_meta( $review_id, self::MODE_PREFIX . $slot, true ) );
+		if ( 'custom' === $stored ) {
+			return true;
+		}
+		if ( in_array( $stored, array( 'auto', 'off' ), true ) ) {
+			return false;
+		}
+
+		$attachment_id = absint( get_post_meta( $review_id, self::ID_PREFIX . $slot . '_id', true ) );
+		if ( $attachment_id ) {
+			return ! self::is_tmdb_managed_attachment( $attachment_id );
+		}
+
+		$legacy_key = isset( $slots[ $slot ]['legacy_key'] ) ? $slots[ $slot ]['legacy_key'] : '';
+		return '' !== $legacy_key && '' !== trim( (string) get_post_meta( $review_id, $legacy_key, true ) );
 	}
 
 	/**
