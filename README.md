@@ -69,6 +69,8 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.8` adds an exact-identity Review Artwork Audit beneath the singular Review menu. It inventories poster/banner coverage without making external calls, then runs a resumable background OMDb/TMDb pass using each Review's canonical IMDb ID. Missing art and previously TMDb-managed attachments can be corrected automatically; custom or unmarked Media Library art is protected and reported as a conflict.
+
 Core `0.8.7` adds a progressively enhanced Review Studio to the Classic Editor.
 The article editor remains unchanged, while Review Intake, Film Details,
 Debrief Studio, and Review Image Studio become one keyboard-accessible tabbed

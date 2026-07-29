@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.8.7
+ * Version: 0.8.8
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.8.7' );
+define( 'LUNARA_CORE_VERSION', '0.8.8' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -88,6 +88,11 @@ final class Lunara_Core {
         // attachments. Public rendering can resolve the same contract.
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-image-studio.php';
         Lunara_Review_Image_Studio::init();
+
+        // Exact-identity bulk artwork audit/backfill. The public runtime adds
+        // only its cron hook; the census and controls exist in wp-admin.
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-review-artwork-backfill.php';
+        Lunara_Review_Artwork_Backfill::init();
 
         // Review-owned Debrief Studio. The Studio is admin-only; the active
         // theme remains responsible for public presentation.
