@@ -1,0 +1,324 @@
+# Instincts generated from https://github.com/TheAntagonist2020/lunara-plugin-core
+# Generated: 2026-07-14T21:57:13.327Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: lunara-plugin-core-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Commit Length
+
+## Action
+
+Keep commit messages concise (~43 characters)
+
+## Evidence
+
+- Average commit message length: 43 chars
+- Based on 3 commits
+
+---
+id: lunara-plugin-core-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Naming Files
+
+## Action
+
+Use kebab-case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: kebab-case
+
+---
+id: lunara-plugin-core-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: lunara-plugin-core-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: lunara-plugin-core-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: lunara-plugin-core-workflow-feature-implementation-with-regression-test
+trigger: "when doing feature implementation with regression test"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Workflow Feature Implementation With Regression Test
+
+## Action
+
+Follow the feature-implementation-with-regression-test workflow:
+1. Edit or add implementation in includes/class-lunara-debrief-suggestions.php
+2. Update or add corresponding test in tests/debrief-suggestions-regression.php
+3. Commit both implementation and test changes together
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: includes/class-lunara-debrief-suggestions.php, tests/debrief-suggestions-regression.php
+
+---
+id: lunara-plugin-core-instinct-file-naming
+trigger: "When creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct File Naming
+
+## Action
+
+Name the file using kebab-case (e.g., my-feature-file.ts)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+
+---
+id: lunara-plugin-core-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Function Naming
+
+## Action
+
+Name the function using camelCase (e.g., getSuggestions)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: lunara-plugin-core-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Class Naming
+
+## Action
+
+Name the class using PascalCase (e.g., DebriefDirector)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: lunara-plugin-core-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Constant Naming
+
+## Action
+
+Name the constant using SCREAMING_SNAKE_CASE (e.g., MAX_RESULTS)
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: lunara-plugin-core-instinct-import-style
+trigger: "When importing modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: lunara-plugin-core-instinct-export-style
+trigger: "When exporting modules"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: lunara-plugin-core-instinct-test-location
+trigger: "When adding or updating tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Test Location
+
+## Action
+
+Place test files in the 'tests' folder, separate from implementation code
+
+## Evidence
+
+- Pattern in architecture.folderStructure.testLocation
+- Pattern in workflows[0].filesInvolved
+
+---
+id: lunara-plugin-core-instinct-test-update-with-feature
+trigger: "When implementing or enhancing a feature"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Test Update With Feature
+
+## Action
+
+Update or add a corresponding regression test in the 'tests' folder
+
+## Evidence
+
+- Workflow 'feature-implementation-with-regression-test'
+- Pattern in workflows[0].commitSequence
+
+---
+id: lunara-plugin-core-instinct-commit-format-freeform
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Commit Format Freeform
+
+## Action
+
+Use a concise, freeform message describing the change (e.g., 'Improve Review CPT admin discoverability')
+
+## Evidence
+
+- Pattern in commits.examples
+- Pattern in commits.type
+
+---
+id: lunara-plugin-core-instinct-feature-with-test-workflow
+trigger: "When adding or improving a feature and verifying correctness"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: TheAntagonist2020/lunara-plugin-core
+---
+
+# Lunara Plugin Core Instinct Feature With Test Workflow
+
+## Action
+
+Edit or add implementation in 'includes/class-lunara-debrief-suggestions.php', update or add corresponding test in 'tests/debrief-suggestions-regression.php', and commit both changes together
+
+## Evidence
+
+- Workflow 'feature-implementation-with-regression-test'
+- Pattern in workflows[0].commitSequence
+
