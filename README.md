@@ -69,6 +69,15 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.9` adds an always-loaded, read-only bridge for Lunara Site Studio.
+`lunara_core_review_studio_admin_url()` opens the Review Library, a new Review,
+or an individually authorized Review workspace while returning the same safe
+Library fallback for invalid, non-Review, and inaccessible IDs.
+`lunara_core_review_studio_status()` reports only plugin version, Review CPT
+availability, and supported chooser/new/edit actions. Core also contributes an
+inert Review Studio destination when the theme registry filter is present; it
+does not copy Review records, drafts, metadata, titles, or credentials.
+
 Core `0.8.8` adds an exact-identity Review Artwork Audit beneath the singular Review menu. It inventories poster/banner coverage without making external calls, then runs a resumable background OMDb/TMDb pass using each Review's canonical IMDb ID. Missing art and previously TMDb-managed attachments can be corrected automatically; custom or unmarked Media Library art is protected and reported as a conflict.
 
 Core `0.8.7` adds a progressively enhanced Review Studio to the Classic Editor.
