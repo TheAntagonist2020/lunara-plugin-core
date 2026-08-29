@@ -35,6 +35,9 @@ $GLOBALS['lunara_artwork_health_state'] = array(
 	'transient'           => false,
 	'image_refresh_calls' => 0,
 	'throw_image_refresh' => false,
+	'pause_during_refresh' => false,
+	'job_change_during_census' => null,
+	'job_change_before_write' => null,
 );
 
 function __( $text ) { return $text; }
@@ -103,6 +106,10 @@ function get_option( $key, $default = false ) {
 function update_option( $key, $value, $autoload = null ) {
 	$GLOBALS['lunara_artwork_health_state']['option_writes'][] = array( $key, $value, $autoload );
 	if ( 'lunara_review_artwork_backfill_job' === $key ) {
+		if ( is_array( $GLOBALS['lunara_artwork_health_state']['job_change_before_write'] ) ) {
+			$GLOBALS['lunara_artwork_health_state']['options'][ $key ] = $GLOBALS['lunara_artwork_health_state']['job_change_before_write'];
+			$GLOBALS['lunara_artwork_health_state']['job_change_before_write'] = null;
+		}
 		$mode = $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'];
 		if ( 'throw' === $mode ) {
 			throw new RuntimeException( 'canonical write failure' );
@@ -123,6 +130,10 @@ function get_posts() {
 	$GLOBALS['lunara_artwork_health_state']['census_calls']++;
 	if ( ! $GLOBALS['lunara_artwork_health_state']['census_allowed'] ) {
 		throw new RuntimeException( 'A census was attempted outside an explicit refresh/start/completion seam.' );
+	}
+	if ( is_array( $GLOBALS['lunara_artwork_health_state']['job_change_during_census'] ) ) {
+		$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $GLOBALS['lunara_artwork_health_state']['job_change_during_census'];
+		$GLOBALS['lunara_artwork_health_state']['job_change_during_census'] = null;
 	}
 	return array( 17, 18 );
 }
@@ -207,6 +218,18 @@ final class Lunara_Review_Image_Studio {
 
 	public static function refresh_review_artwork( $review_id ) {
 		$GLOBALS['lunara_artwork_health_state']['image_refresh_calls']++;
+		if ( $GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] ) {
+			$GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] = false;
+			$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
+			try {
+				Lunara_Review_Artwork_Backfill::handle_pause();
+			} catch ( RuntimeException $error ) {
+				if ( 'redirect stop' !== $error->getMessage() ) {
+					throw $error;
+				}
+			}
+			$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
+		}
 		if ( $GLOBALS['lunara_artwork_health_state']['throw_image_refresh'] ) {
 			throw new RuntimeException( 'image refresh interruption' );
 		}
@@ -443,6 +466,56 @@ lunara_artwork_health_assert_same( 0, $interrupted_job['processed'], 'An interru
 lunara_artwork_health_assert_same( 0, $interrupted_job['counts']['errors'], 'Infrastructure interruption must not create an error count beyond processed work.' );
 lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['projection_writes'] ), 'A verified interrupted canonical pause must still project coherent compact state.' );
 $GLOBALS['lunara_artwork_health_state']['throw_image_refresh'] = false;
+
+$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+$GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
+$GLOBALS['lunara_artwork_health_state']['cleared'] = array();
+$GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] = true;
+Lunara_Review_Artwork_Backfill::process_next();
+$paused_after_current = $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'];
+lunara_artwork_health_assert_same( 'paused', $paused_after_current['status'], 'A pause that wins during refresh must remain canonical after the current Review finishes.' );
+lunara_artwork_health_assert_same( 1, $paused_after_current['cursor'], 'Pause-after-current must preserve the completed Review cursor.' );
+lunara_artwork_health_assert_same( 1, $paused_after_current['processed'], 'Pause-after-current must preserve coherent processed progress.' );
+lunara_artwork_health_assert_same( 'paused', end( $GLOBALS['lunara_artwork_health_state']['projection_writes'] )['status'], 'The final compact projection after an interleaved pause must remain paused.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'An interleaved pause must suppress the next worker tick.' );
+
+$idle_job = $running_job;
+$idle_job['status']       = 'idle';
+$idle_job['ids']          = array();
+$idle_job['cursor']       = 0;
+$idle_job['processed']    = 0;
+$idle_job['total']        = 0;
+$idle_job['started_at']   = 0;
+$idle_job['completed_at'] = 0;
+$idle_job['counts']       = array( 'ready' => 0, 'partial' => 0, 'conflicts' => 0, 'errors' => 0 );
+$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $idle_job;
+$GLOBALS['lunara_artwork_health_state']['job_change_during_census'] = $already_running;
+$GLOBALS['lunara_artwork_health_state']['option_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
+try {
+	Lunara_Review_Artwork_Backfill::handle_start();
+} catch ( RuntimeException $error ) {
+	lunara_artwork_health_assert_same( 'redirect stop', $error->getMessage(), 'Interleaved start fixture must stop at its redirect.' );
+}
+lunara_artwork_health_assert_same( $already_running, $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'], 'Start census work must not overwrite a canonical state change that wins after the initial read.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A lost start CAS must not schedule a replacement worker.' );
+
+$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+$GLOBALS['lunara_artwork_health_state']['job_change_before_write'] = $stale_complete;
+$GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['cleared'] = array();
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
+try {
+	Lunara_Review_Artwork_Backfill::handle_pause();
+} catch ( RuntimeException $error ) {
+	lunara_artwork_health_assert_same( 'redirect stop', $error->getMessage(), 'Interleaved pause fixture must stop at its redirect.' );
+}
+lunara_artwork_health_assert_same( $stale_complete, $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'], 'Pause must not overwrite a canonical state change that wins after the initial read.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['cleared'], 'A lost pause CAS must not clear the newer canonical schedule state.' );
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
 
 $complete_job = $running_job;
 $complete_job['ids']   = array( 17 );

@@ -563,6 +563,15 @@ $invalid_running_errors = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $invalid_running_errors['known'], 'Running errors beyond processed work must be rejected independently of timestamp validity.' );
 lunara_core_health_assert_same( 'failed', $invalid_running_errors['snapshot']['state'], 'Impossible active error counts must fail strict normalization.' );
 
+$undercounted_complete = $ready_snapshot;
+$undercounted_complete['job']['ready'] = 0;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $undercounted_complete;
+lunara_core_health_reset_memo();
+$invalid_undercount = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $invalid_undercount['known'], 'Processed work with missing result buckets must be rejected as unknown.' );
+lunara_core_health_assert_same( 'failed', $invalid_undercount['snapshot']['state'], 'Undercounted processed results must fail strict snapshot normalization.' );
+lunara_core_health_assert_same( 'needs_attention', $invalid_undercount['state'], 'Undercounted results must never manufacture top-level ready health.' );
+
 $impossible_conflicts = $valid_snapshot;
 $impossible_conflicts['job']['processed'] = 1;
 $impossible_conflicts['job']['ready']     = 1;
@@ -695,6 +704,20 @@ lunara_core_health_reset_memo();
 $after_owned_rollback_failure = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $after_owned_rollback_failure['known'], 'An unverified still-owned forward row must never become known after rollback failure.' );
 lunara_core_health_assert_same( 'failed', $after_owned_rollback_failure['snapshot']['state'], 'Rollback failure must durably fail-close an unverified still-owned forward row.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['poison_on_update']  = 1;
+$GLOBALS['lunara_core_health_state']['fail_update_calls'] = array( 2, 3 );
+$double_repair_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $double_repair_failure, 'Forward verification plus rollback plus fail-close failure must keep the refresh failed.' );
+$same_request_unverified = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $same_request_unverified['known'], 'The same request must intrinsically reject a still-owned unverified physical row.' );
+lunara_core_health_assert_same( 'failed', $same_request_unverified['snapshot']['state'], 'The same request must expose an unverified physical row only as failed.' );
+lunara_core_health_reset_memo();
+$fresh_read_unverified = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $fresh_read_unverified['known'], 'A fresh status instance/read must intrinsically reject the resident unverified row.' );
+lunara_core_health_assert_same( 'failed', $fresh_read_unverified['snapshot']['state'], 'A fresh read must never reinterpret an unverified row as fresh.' );
 
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );
