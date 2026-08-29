@@ -139,7 +139,12 @@ final class Lunara_Review_Artwork_Backfill {
 	/** Start or restart a complete exact-identity pass. */
 	public static function handle_start() {
 		self::authorize();
-		$job = self::get_job();
+		$state = self::get_job_state();
+		if ( null === $state ) {
+			wp_safe_redirect( self::page_url() );
+			exit;
+		}
+		$job = $state['job'];
 		if ( 'running' === $job['status'] ) {
 			wp_safe_redirect( self::page_url() );
 			exit;
@@ -148,7 +153,10 @@ final class Lunara_Review_Artwork_Backfill {
 		$credential = self::credentials_status();
 		$coverage   = self::census();
 		if ( ! $credential['ready'] ) {
-			self::write_full_health_snapshot( $coverage, $job, $credential );
+			$current = self::get_job_state();
+			if ( null !== $current ) {
+				self::write_full_health_snapshot( $coverage, $current['job'], $credential );
+			}
 			wp_safe_redirect( self::page_url() );
 			exit;
 		}
@@ -167,7 +175,7 @@ final class Lunara_Review_Artwork_Backfill {
 			wp_safe_redirect( self::page_url() );
 			exit;
 		}
-		$saved = self::save_job( $job, true, $coverage, $credential );
+		$saved = self::save_job( $job, true, $coverage, $credential, $state['row'] );
 		if ( $saved && 'running' === $job['status'] ) {
 			self::schedule_next( 1 );
 		}
@@ -179,11 +187,16 @@ final class Lunara_Review_Artwork_Backfill {
 	/** Pause without discarding progress or the audit trail. */
 	public static function handle_pause() {
 		self::authorize();
-		$job = self::get_job();
+		$state = self::get_job_state();
+		if ( null === $state ) {
+			wp_safe_redirect( self::page_url() );
+			exit;
+		}
+		$job = $state['job'];
 		if ( 'running' === $job['status'] ) {
 			$job['status'] = 'paused';
 		}
-		if ( 'paused' === $job['status'] && self::save_job( $job ) ) {
+		if ( 'paused' === $job['status'] && self::save_job( $job, false, null, null, $state['row'] ) ) {
 			wp_clear_scheduled_hook( self::WORK_HOOK );
 		}
 		wp_safe_redirect( self::page_url() );
@@ -206,18 +219,23 @@ final class Lunara_Review_Artwork_Backfill {
 
 	/** Process one Review, then yield before the next provider request set. */
 	public static function process_next() {
-		$job = self::get_job();
+		$state = self::get_job_state();
+		if ( null === $state ) {
+			return;
+		}
+		$job = $state['job'];
 		if ( 'running' !== $job['status'] || get_transient( self::LOCK_KEY ) ) {
 			return;
 		}
 
 		set_transient( self::LOCK_KEY, 1, MINUTE_IN_SECONDS );
-		$saved = false;
+		$base_job = $job;
+		$saved    = false;
 		try {
 			if ( $job['cursor'] >= $job['total'] || empty( $job['ids'][ $job['cursor'] ] ) ) {
 				$job['status']       = 'complete';
 				$job['completed_at'] = time();
-				self::save_job( $job, true );
+				self::save_job( $job, true, null, null, $state['row'] );
 				return;
 			}
 
@@ -237,11 +255,18 @@ final class Lunara_Review_Artwork_Backfill {
 				$job['status']       = 'complete';
 				$job['completed_at'] = time();
 			}
-			$saved = self::save_job( $job, 'complete' === $job['status'] );
+			$saved = self::save_job( $job, 'complete' === $job['status'], null, null, $state['row'] );
+			if ( ! $saved ) {
+				$reconciled = self::reconcile_paused_worker_progress( $base_job, $job );
+				if ( is_array( $reconciled ) ) {
+					$job   = $reconciled;
+					$saved = true;
+				}
+			}
 		} catch ( Throwable $error ) {
 			$job['status']     = 'paused';
 			$job['last_error'] = sanitize_text_field( $error->getMessage() );
-			$saved = self::save_job( $job );
+			$saved = self::save_job( $job, false, null, null, $state['row'] );
 		} finally {
 			delete_transient( self::LOCK_KEY );
 		}
@@ -343,6 +368,18 @@ final class Lunara_Review_Artwork_Backfill {
 		return wp_parse_args( is_array( $job ) ? $job : array(), self::empty_job() );
 	}
 
+	/** @return array<string,mixed>|null */
+	private static function get_job_state() {
+		$row = self::read_job_option_row();
+		if ( ! $row['read_ok'] ) {
+			return null;
+		}
+
+		$raw = $row['exists'] ? self::unserialize_job_option( $row['option_value'] ) : array();
+		$job = wp_parse_args( is_array( $raw ) ? $raw : array(), self::empty_job() );
+		return array( 'job' => $job, 'row' => $row );
+	}
+
 	/** @return array<string,mixed> */
 	private static function empty_job() {
 		return array(
@@ -366,17 +403,19 @@ final class Lunara_Review_Artwork_Backfill {
 	 * @param bool                     $refresh_full Whether this is a full refresh seam.
 	 * @param array<string,mixed>|null $coverage    Optional already-read census.
 	 * @param array<string,bool>|null  $credentials Optional already-read readiness.
-	 * @return bool Whether the exact canonical job was verified.
+	 * @param array<string,mixed>|null $expected_row Exact physical prestate for state-conditional mutation.
+	 * @return bool Whether the exact canonical job was conditionally persisted and verified.
 	 */
-	private static function save_job( $job, $refresh_full = false, $coverage = null, $credentials = null ) {
-		try {
-			update_option( self::OPTION_KEY, $job, false );
-			$stored = get_option( self::OPTION_KEY, null );
-		} catch ( Throwable $error ) {
-			return false;
+	private static function save_job( $job, $refresh_full = false, $coverage = null, $credentials = null, $expected_row = null ) {
+		if ( ! is_array( $expected_row ) ) {
+			$state = self::get_job_state();
+			if ( null === $state ) {
+				return false;
+			}
+			$expected_row = $state['row'];
 		}
 
-		if ( $stored !== $job ) {
+		if ( ! self::persist_job_row( $expected_row, $job ) ) {
 			return false;
 		}
 
@@ -393,6 +432,199 @@ final class Lunara_Review_Artwork_Backfill {
 		}
 
 		return true;
+	}
+
+	/** @return array<string,mixed>|false */
+	private static function reconcile_paused_worker_progress( $base_job, $advanced_job ) {
+		$latest = self::get_job_state();
+		if (
+			null === $latest
+			|| 'paused' !== $latest['job']['status']
+			|| $latest['job']['ids'] !== $base_job['ids']
+			|| $latest['job']['cursor'] !== $base_job['cursor']
+			|| $latest['job']['processed'] !== $base_job['processed']
+			|| $latest['job']['total'] !== $base_job['total']
+			|| $latest['job']['started_at'] !== $base_job['started_at']
+		) {
+			return false;
+		}
+
+		$merged                 = $latest['job'];
+		$merged['cursor']       = $advanced_job['cursor'];
+		$merged['processed']    = $advanced_job['processed'];
+		$merged['counts']       = $advanced_job['counts'];
+		$merged['recent']       = $advanced_job['recent'];
+		$merged['last_error']   = $advanced_job['last_error'];
+		$merged['completed_at'] = 0;
+		return self::save_job( $merged, false, null, null, $latest['row'] ) ? $merged : false;
+	}
+
+	/** @param array<string,mixed> $expected Exact physical prestate. @param array<string,mixed> $job Desired canonical job. @return bool */
+	private static function persist_job_row( $expected, $job ) {
+		$desired = self::serialize_job_option( $job );
+		if ( $expected['exists'] && $desired === $expected['option_value'] && self::autoload_is_disabled( $expected['autoload'] ) ) {
+			return true;
+		}
+
+		$write    = self::replace_job_option_row( $expected, $desired, 'no' );
+		$verified = self::read_job_option_row();
+		if ( self::job_row_matches( $verified, $desired, 'no', $write['option_id'] ) ) {
+			return true;
+		}
+
+		self::restore_job_option_row( $expected, $desired, $write['option_id'] );
+		return false;
+	}
+
+	/** @return array<string,mixed> */
+	private static function read_job_option_row() {
+		global $wpdb;
+		$empty = array( 'read_ok' => false, 'exists' => false, 'option_id' => 0, 'option_value' => '', 'autoload' => '' );
+		if ( ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_row' ) ) {
+			return $empty;
+		}
+
+		$wpdb->last_error = '';
+		$row = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT option_id, option_value, autoload FROM {$wpdb->options} WHERE option_name = %s LIMIT 1",
+				self::OPTION_KEY
+			),
+			defined( 'ARRAY_A' ) ? ARRAY_A : 'ARRAY_A'
+		);
+		if ( ! empty( $wpdb->last_error ) || false === $row ) {
+			return $empty;
+		}
+		if ( null === $row ) {
+			$empty['read_ok'] = true;
+			return $empty;
+		}
+		if (
+			! is_array( $row )
+			|| ! isset( $row['option_id'], $row['option_value'], $row['autoload'] )
+			|| ! ctype_digit( (string) $row['option_id'] )
+			|| (int) $row['option_id'] <= 0
+			|| ! is_string( $row['option_value'] )
+			|| ! is_string( $row['autoload'] )
+		) {
+			return $empty;
+		}
+
+		return array( 'read_ok' => true, 'exists' => true, 'option_id' => (int) $row['option_id'], 'option_value' => $row['option_value'], 'autoload' => $row['autoload'] );
+	}
+
+	/** @param array<string,mixed> $expected Exact prestate. @param string $value Serialized job. @param string $autoload Desired autoload. @return array<string,mixed> */
+	private static function replace_job_option_row( $expected, $value, $autoload ) {
+		global $wpdb;
+		$outcome = array( 'result' => false, 'option_id' => $expected['exists'] ? $expected['option_id'] : 0 );
+		if ( ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'query' ) ) {
+			return $outcome;
+		}
+
+		try {
+			if ( $expected['exists'] ) {
+				$outcome['result'] = $wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$wpdb->options} SET option_value = %s, autoload = %s WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
+						$value,
+						$autoload,
+						$expected['option_id'],
+						self::OPTION_KEY,
+						$expected['option_value'],
+						$expected['autoload']
+					)
+				);
+			} else {
+				$outcome['result'] = $wpdb->query(
+					$wpdb->prepare(
+						"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)",
+						self::OPTION_KEY,
+						$value,
+						$autoload
+					)
+				);
+				if ( false !== $outcome['result'] && isset( $wpdb->insert_id ) ) {
+					$outcome['option_id'] = (int) $wpdb->insert_id;
+				}
+			}
+		} catch ( Throwable $error ) {
+			$outcome['result'] = false;
+		}
+
+		self::clear_job_option_cache();
+		return $outcome;
+	}
+
+	/** @param array<string,mixed> $prior Exact original row. @param string $desired Serialized attempted job. @param int $option_id Fenced row identity. @return bool */
+	private static function restore_job_option_row( $prior, $desired, $option_id ) {
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'query' ) || $option_id <= 0 ) {
+			return false;
+		}
+
+		try {
+			if ( $prior['exists'] ) {
+				$wpdb->query(
+					$wpdb->prepare(
+						"UPDATE {$wpdb->options} SET option_value = %s, autoload = %s WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
+						$prior['option_value'],
+						$prior['autoload'],
+						$option_id,
+						self::OPTION_KEY,
+						$desired,
+						'no'
+					)
+				);
+			} else {
+				$wpdb->query(
+					$wpdb->prepare(
+						"DELETE FROM {$wpdb->options} WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
+						$option_id,
+						self::OPTION_KEY,
+						$desired,
+						'no'
+					)
+				);
+			}
+		} catch ( Throwable $error ) {
+			return false;
+		}
+
+		self::clear_job_option_cache();
+		return self::job_rows_equal( self::read_job_option_row(), $prior );
+	}
+
+	/** @param array<string,mixed> $row Row. @param string $value Raw value. @param string $autoload Raw autoload. @param int $option_id Physical ID. @return bool */
+	private static function job_row_matches( $row, $value, $autoload, $option_id ) {
+		return $row['read_ok'] && $row['exists'] && $option_id > 0 && $row['option_id'] === $option_id && $row['option_value'] === $value && $row['autoload'] === $autoload;
+	}
+
+	/** @param array<string,mixed> $left Row. @param array<string,mixed> $right Row. @return bool */
+	private static function job_rows_equal( $left, $right ) {
+		return $left['read_ok'] && $right['read_ok'] && $left['exists'] === $right['exists'] && ( ! $left['exists'] || ( $left['option_id'] === $right['option_id'] && $left['option_value'] === $right['option_value'] && $left['autoload'] === $right['autoload'] ) );
+	}
+
+	/** @param string $autoload Raw autoload. @return bool */
+	private static function autoload_is_disabled( $autoload ) {
+		return in_array( $autoload, array( 'no', 'off', 'auto-off' ), true );
+	}
+
+	/** @param mixed $value Job value. @return string */
+	private static function serialize_job_option( $value ) {
+		return function_exists( 'maybe_serialize' ) ? maybe_serialize( $value ) : serialize( $value );
+	}
+
+	/** @param string $value Raw job value. @return mixed */
+	private static function unserialize_job_option( $value ) {
+		return function_exists( 'maybe_unserialize' ) ? maybe_unserialize( $value ) : @unserialize( $value );
+	}
+
+	private static function clear_job_option_cache() {
+		if ( function_exists( 'wp_cache_delete' ) ) {
+			wp_cache_delete( self::OPTION_KEY, 'options' );
+			wp_cache_delete( 'alloptions', 'options' );
+			wp_cache_delete( 'notoptions', 'options' );
+		}
 	}
 
 	/** @return bool */

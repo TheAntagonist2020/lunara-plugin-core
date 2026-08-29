@@ -24,6 +24,9 @@ final class Lunara_Core_Site_Studio_Bridge {
 	/** @var array<string,mixed>|null */
 	private static $artwork_status_memo = null;
 
+	/** @var array<string,bool> Verified payloads observed only inside an unresolved transaction in this request. */
+	private static $artwork_uncommitted_rows = array();
+
 	/** Register the inert theme-extension hook. */
 	public static function init() {
 		add_filter( 'lunara_site_studio_surfaces', array( __CLASS__, 'contribute_surfaces' ), 10, 1 );
@@ -532,6 +535,15 @@ final class Lunara_Core_Site_Studio_Bridge {
 			$empty['snapshot_state'] = 'failed';
 			return $empty;
 		}
+		if (
+			( isset( $raw['persistence_state'] ) && 'verified' !== $raw['persistence_state'] )
+			|| isset( self::$artwork_uncommitted_rows[ hash( 'sha256', self::serialize_artwork_option( $raw ) ) ] )
+		) {
+			$empty['snapshot_state'] = 'failed';
+			$empty['generated_at']   = $generated;
+			$empty['expires_at']     = $expires;
+			return $empty;
+		}
 		if ( isset( $raw['snapshot_state'] ) && 'failed' === $raw['snapshot_state'] ) {
 			$empty['snapshot_state'] = 'failed';
 			$empty['generated_at']   = $generated;
@@ -569,27 +581,88 @@ final class Lunara_Core_Site_Studio_Bridge {
 			return false;
 		}
 
-		$desired = self::serialize_artwork_option( $snapshot );
+		$snapshot['persistence_state'] = 'verified';
+		$desired                       = self::serialize_artwork_option( $snapshot );
 		if ( $prior['exists'] && $desired === $prior['option_value'] ) {
 			if ( self::autoload_is_disabled( $prior['autoload'] ) ) {
 				self::$artwork_status_memo = null;
 				return true;
 			}
-		}
 
-		$forward  = self::replace_artwork_option_row( $prior, $desired, 'no' );
-		$verified = self::read_artwork_option_row();
-		if ( self::row_matches( $verified, $desired, 'no', $forward['option_id'] ) ) {
+			$autoload_write = self::replace_artwork_option_row( $prior, $desired, 'no' );
+			$autoload_read  = self::read_artwork_option_row();
+			$autoload_ok    = self::row_matches( $autoload_read, $desired, 'no', $autoload_write['option_id'] );
 			self::$artwork_status_memo = null;
-			return true;
+			return $autoload_ok;
 		}
 
-		$restored = self::restore_artwork_option_row( $prior, $desired, $forward['option_id'] );
-		if ( ! $restored ) {
-			self::fail_close_artwork_option_row( $snapshot, $desired, $forward['option_id'] );
+		$staged_snapshot                      = $snapshot;
+		$staged_snapshot['persistence_state'] = 'unverified';
+		$staged                               = self::serialize_artwork_option( $staged_snapshot );
+		$forward                              = self::replace_artwork_option_row( $prior, $staged, 'no' );
+		$staged_read                          = self::read_artwork_option_row();
+		if ( ! self::row_matches( $staged_read, $staged, 'no', $forward['option_id'] ) ) {
+			self::restore_artwork_option_row( $prior, $staged, $forward['option_id'] );
+			self::$artwork_status_memo = null;
+			return false;
 		}
+
+		if ( ! self::begin_artwork_option_transaction() ) {
+			self::$artwork_status_memo = null;
+			return false;
+		}
+
+		$promotion     = self::replace_artwork_option_row( $staged_read, $desired, 'no' );
+		$verified_read = self::read_artwork_option_row();
+		$verified      = self::row_matches( $verified_read, $desired, 'no', $promotion['option_id'] );
+		if ( ! $verified ) {
+			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
+			self::rollback_artwork_option_transaction();
+			self::$artwork_status_memo = null;
+			return false;
+		}
+
+		$committed = self::commit_artwork_option_transaction();
+		if ( ! $committed ) {
+			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
+			self::rollback_artwork_option_transaction();
+			self::$artwork_status_memo = null;
+			return false;
+		}
+
+		unset( self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] );
 		self::$artwork_status_memo = null;
-		return false;
+		return true;
+	}
+
+	/** @return bool */
+	private static function begin_artwork_option_transaction() {
+		global $wpdb;
+		try {
+			return is_object( $wpdb ) && method_exists( $wpdb, 'query' ) && false !== $wpdb->query( 'START TRANSACTION' );
+		} catch ( Throwable $error ) {
+			return false;
+		}
+	}
+
+	/** @return bool */
+	private static function commit_artwork_option_transaction() {
+		global $wpdb;
+		try {
+			return is_object( $wpdb ) && method_exists( $wpdb, 'query' ) && false !== $wpdb->query( 'COMMIT' );
+		} catch ( Throwable $error ) {
+			return false;
+		}
+	}
+
+	/** @return bool */
+	private static function rollback_artwork_option_transaction() {
+		global $wpdb;
+		try {
+			return is_object( $wpdb ) && method_exists( $wpdb, 'query' ) && false !== $wpdb->query( 'ROLLBACK' );
+		} catch ( Throwable $error ) {
+			return false;
+		}
 	}
 
 	/** @return array<string,mixed> */
@@ -638,9 +711,10 @@ final class Lunara_Core_Site_Studio_Bridge {
 			return $outcome;
 		}
 
-		if ( $prior['exists'] ) {
-			$outcome['result'] = $wpdb->query(
-				$wpdb->prepare(
+		try {
+			if ( $prior['exists'] ) {
+				$outcome['result'] = $wpdb->query(
+					$wpdb->prepare(
 					"UPDATE {$wpdb->options} SET option_value = %s, autoload = %s WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
 					$value,
 					$autoload,
@@ -648,20 +722,23 @@ final class Lunara_Core_Site_Studio_Bridge {
 					self::ARTWORK_HEALTH_OPTION,
 					$prior['option_value'],
 					$prior['autoload']
-				)
-			);
-		} else {
-			$outcome['result'] = $wpdb->query(
-				$wpdb->prepare(
+					)
+				);
+			} else {
+				$outcome['result'] = $wpdb->query(
+					$wpdb->prepare(
 					"INSERT INTO {$wpdb->options} (option_name, option_value, autoload) VALUES (%s, %s, %s)",
 					self::ARTWORK_HEALTH_OPTION,
 					$value,
 					$autoload
-				)
-			);
-			if ( false !== $outcome['result'] && isset( $wpdb->insert_id ) ) {
-				$outcome['option_id'] = (int) $wpdb->insert_id;
+					)
+				);
+				if ( false !== $outcome['result'] && isset( $wpdb->insert_id ) ) {
+					$outcome['option_id'] = (int) $wpdb->insert_id;
+				}
 			}
+		} catch ( Throwable $error ) {
+			$outcome['result'] = false;
 		}
 
 		self::clear_artwork_option_cache();
@@ -675,9 +752,10 @@ final class Lunara_Core_Site_Studio_Bridge {
 			return false;
 		}
 
-		if ( $prior['exists'] ) {
-			$wpdb->query(
-				$wpdb->prepare(
+		try {
+			if ( $prior['exists'] ) {
+				$wpdb->query(
+					$wpdb->prepare(
 					"UPDATE {$wpdb->options} SET option_value = %s, autoload = %s WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
 					$prior['option_value'],
 					$prior['autoload'],
@@ -685,41 +763,26 @@ final class Lunara_Core_Site_Studio_Bridge {
 					self::ARTWORK_HEALTH_OPTION,
 					$desired,
 					'no'
-				)
-			);
-		} else {
-			$wpdb->query(
-				$wpdb->prepare(
+					)
+				);
+			} else {
+				$wpdb->query(
+					$wpdb->prepare(
 					"DELETE FROM {$wpdb->options} WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
 					$option_id,
 					self::ARTWORK_HEALTH_OPTION,
 					$desired,
 					'no'
-				)
-			);
+					)
+				);
+			}
+		} catch ( Throwable $error ) {
+			return false;
 		}
 
 		self::clear_artwork_option_cache();
 		$verified = self::read_artwork_option_row();
 		return self::rows_equal( $verified, $prior );
-	}
-
-	/** @param array<string,mixed> $snapshot Redacted normalized forward value. @param string $desired Serialized forward value. @param int $option_id Fenced forward-row identity. @return bool */
-	private static function fail_close_artwork_option_row( $snapshot, $desired, $option_id ) {
-		$current = self::read_artwork_option_row();
-		if ( ! self::row_matches( $current, $desired, 'no', $option_id ) ) {
-			return false;
-		}
-
-		$snapshot['snapshot_state'] = 'failed';
-		$snapshot['coverage']       = self::unknown_coverage();
-		$snapshot['job']            = self::unknown_job();
-		$snapshot['credentials']    = self::unknown_credentials();
-		$failed                     = self::serialize_artwork_option( $snapshot );
-		$write                      = self::replace_artwork_option_row( $current, $failed, 'no' );
-		$verified                   = self::read_artwork_option_row();
-
-		return self::row_matches( $verified, $failed, 'no', $write['option_id'] );
 	}
 
 	/** @param array<string,mixed> $row Row. @param string $value Serialized value. @param string $autoload Expected autoload. @param int $option_id Expected physical identity. @return bool */
@@ -840,7 +903,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$max_conflicts = $processed * 2;
 		if (
 			$processed > $total
-			|| $ready + $partial + $errors > $processed
+			|| $ready + $partial + $errors !== $processed
 			|| $conflicts > $max_conflicts
 		) {
 			return null;

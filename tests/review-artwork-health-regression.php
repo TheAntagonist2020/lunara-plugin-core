@@ -18,12 +18,15 @@ $GLOBALS['lunara_artwork_health_state'] = array(
 	'nonce_valid'         => true,
 	'nonce_calls'         => 0,
 	'options'             => array(),
+	'rows'                => array(),
+	'next_option_id'      => 201,
 	'option_writes'       => array(),
 	'canonical_write_mode' => 'success',
 	'throw_next_job_read' => false,
 	'census_allowed'      => false,
 	'census_calls'        => 0,
 	'credential_loads'    => 0,
+	'credential_ready'    => true,
 	'snapshot_writes'     => array(),
 	'projection_writes'   => array(),
 	'throw_snapshot'      => false,
@@ -39,6 +42,93 @@ $GLOBALS['lunara_artwork_health_state'] = array(
 	'job_change_during_census' => null,
 	'job_change_before_write' => null,
 );
+
+function maybe_serialize( $value ) { return serialize( $value ); }
+function maybe_unserialize( $value ) { return is_string( $value ) ? @unserialize( $value ) : $value; }
+
+function lunara_artwork_health_set_job( $job, $autoload = 'no' ) {
+	$key       = 'lunara_review_artwork_backfill_job';
+	$option_id = isset( $GLOBALS['lunara_artwork_health_state']['rows'][ $key ] )
+		? $GLOBALS['lunara_artwork_health_state']['rows'][ $key ]['option_id']
+		: $GLOBALS['lunara_artwork_health_state']['next_option_id']++;
+	$GLOBALS['lunara_artwork_health_state']['options'][ $key ] = $job;
+	$GLOBALS['lunara_artwork_health_state']['rows'][ $key ]    = array(
+		'option_id'    => $option_id,
+		'option_value' => maybe_serialize( $job ),
+		'autoload'     => $autoload,
+	);
+}
+
+final class Lunara_Artwork_Health_WPDB {
+	public $options = 'wp_options';
+	public $last_error = '';
+	public $insert_id = 0;
+
+	public function prepare( $query, ...$values ) {
+		return array( 'query' => $query, 'values' => $values );
+	}
+
+	public function get_row( $prepared, $output = null ) {
+		$key = $prepared['values'][0];
+		$this->last_error = '';
+		if ( 'lunara_review_artwork_backfill_job' === $key && $GLOBALS['lunara_artwork_health_state']['throw_next_job_read'] ) {
+			$GLOBALS['lunara_artwork_health_state']['throw_next_job_read'] = false;
+			$this->last_error = 'canonical readback failure';
+			return null;
+		}
+		return isset( $GLOBALS['lunara_artwork_health_state']['rows'][ $key ] )
+			? $GLOBALS['lunara_artwork_health_state']['rows'][ $key ]
+			: null;
+	}
+
+	public function query( $prepared ) {
+		$query  = $prepared['query'];
+		$values = $prepared['values'];
+		$key    = false !== strpos( $query, 'INSERT INTO' ) ? $values[0] : $values[3];
+		if ( 'lunara_review_artwork_backfill_job' === $key && is_array( $GLOBALS['lunara_artwork_health_state']['job_change_before_write'] ) ) {
+			lunara_artwork_health_set_job( $GLOBALS['lunara_artwork_health_state']['job_change_before_write'] );
+			$GLOBALS['lunara_artwork_health_state']['job_change_before_write'] = null;
+		}
+		if ( 'lunara_review_artwork_backfill_job' === $key && 'throw' === $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] ) {
+			throw new RuntimeException( 'canonical write failure' );
+		}
+		if ( 'lunara_review_artwork_backfill_job' === $key && 'false_mismatch' === $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] ) {
+			return false;
+		}
+
+		if ( 0 === strpos( $query, 'UPDATE ' ) ) {
+			list( $value, $autoload, $option_id, $key, $prior_value, $prior_autoload ) = $values;
+			$GLOBALS['lunara_artwork_health_state']['option_writes'][] = array( $key, maybe_unserialize( $value ), false );
+			if ( ! isset( $GLOBALS['lunara_artwork_health_state']['rows'][ $key ] ) ) {
+				return 0;
+			}
+			$row = $GLOBALS['lunara_artwork_health_state']['rows'][ $key ];
+			if ( (int) $option_id !== (int) $row['option_id'] || $prior_value !== $row['option_value'] || $prior_autoload !== $row['autoload'] ) {
+				return 0;
+			}
+			$GLOBALS['lunara_artwork_health_state']['rows'][ $key ] = array( 'option_id' => $row['option_id'], 'option_value' => $value, 'autoload' => $autoload );
+			$GLOBALS['lunara_artwork_health_state']['options'][ $key ] = maybe_unserialize( $value );
+		} elseif ( 0 === strpos( $query, 'INSERT ' ) ) {
+			list( $key, $value, $autoload ) = $values;
+			$GLOBALS['lunara_artwork_health_state']['option_writes'][] = array( $key, maybe_unserialize( $value ), false );
+			if ( isset( $GLOBALS['lunara_artwork_health_state']['rows'][ $key ] ) ) {
+				return false;
+			}
+			$this->insert_id = $GLOBALS['lunara_artwork_health_state']['next_option_id']++;
+			$GLOBALS['lunara_artwork_health_state']['rows'][ $key ] = array( 'option_id' => $this->insert_id, 'option_value' => $value, 'autoload' => $autoload );
+			$GLOBALS['lunara_artwork_health_state']['options'][ $key ] = maybe_unserialize( $value );
+		} else {
+			throw new RuntimeException( 'Unexpected canonical option query.' );
+		}
+
+		if ( 'lunara_review_artwork_backfill_job' === $key && 'false_readback_throw' === $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] ) {
+			$GLOBALS['lunara_artwork_health_state']['throw_next_job_read'] = true;
+		}
+		return 1;
+	}
+}
+
+$GLOBALS['wpdb'] = new Lunara_Artwork_Health_WPDB();
 
 function __( $text ) { return $text; }
 function esc_html__( $text ) { return $text; }
@@ -132,7 +222,7 @@ function get_posts() {
 		throw new RuntimeException( 'A census was attempted outside an explicit refresh/start/completion seam.' );
 	}
 	if ( is_array( $GLOBALS['lunara_artwork_health_state']['job_change_during_census'] ) ) {
-		$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $GLOBALS['lunara_artwork_health_state']['job_change_during_census'];
+		lunara_artwork_health_set_job( $GLOBALS['lunara_artwork_health_state']['job_change_during_census'] );
 		$GLOBALS['lunara_artwork_health_state']['job_change_during_census'] = null;
 	}
 	return array( 17, 18 );
@@ -199,7 +289,7 @@ final class Lunara_Core {
 	public static function load_movie_provider_gateway() {
 		$GLOBALS['lunara_artwork_health_state']['credential_loads']++;
 		if ( ! class_exists( 'Lunara_Movie_Provider_Gateway', false ) ) {
-			eval( 'final class Lunara_Movie_Provider_Gateway { public function credentials_status() { return array( "omdb" => true, "tmdb" => true, "ready" => true ); } }' );
+			eval( 'final class Lunara_Movie_Provider_Gateway { public function credentials_status() { $ready = $GLOBALS["lunara_artwork_health_state"]["credential_ready"]; return array( "omdb" => $ready, "tmdb" => $ready, "ready" => $ready ); } }' );
 		}
 	}
 
@@ -322,7 +412,7 @@ $running_job = array(
 	'counts'       => array( 'ready' => 0, 'partial' => 0, 'conflicts' => 0, 'errors' => 0 ),
 	'recent'       => array(),
 );
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['option_writes']      = array();
 $GLOBALS['lunara_artwork_health_state']['projection_writes']  = array();
 $GLOBALS['lunara_artwork_health_state']['snapshot_writes']    = array();
@@ -339,7 +429,7 @@ lunara_artwork_health_assert_same( 0, $GLOBALS['lunara_artwork_health_state']['c
 lunara_artwork_health_assert_same( 0, $GLOBALS['lunara_artwork_health_state']['credential_loads'], 'Intermediate ticks must never inspect credentials.' );
 
 $GLOBALS['lunara_artwork_health_state']['throw_snapshot'] = false;
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] = 'false_mismatch';
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
@@ -348,7 +438,7 @@ lunara_artwork_health_assert_same( 0, $GLOBALS['lunara_artwork_health_state']['o
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['projection_writes'], 'Compact progress must never advance beyond a failed canonical write.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A failed canonical tick must not schedule another worker as though progress persisted.' );
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] = 'false_readback_throw';
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
@@ -357,7 +447,7 @@ lunara_artwork_health_assert_same( 0, $GLOBALS['lunara_artwork_health_state']['o
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['projection_writes'], 'A throwing canonical readback must suppress compact projection.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A throwing canonical readback must suppress the next worker schedule.' );
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] = 'throw';
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
@@ -383,7 +473,7 @@ $stale_complete['total']        = 1;
 $stale_complete['status']       = 'complete';
 $stale_complete['completed_at'] = time();
 $stale_complete['counts']['ready'] = 1;
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $stale_complete;
+lunara_artwork_health_set_job( $stale_complete );
 $GLOBALS['lunara_artwork_health_state']['option_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['cleared'] = array();
@@ -401,7 +491,7 @@ $already_running = $running_job;
 $already_running['cursor']          = 1;
 $already_running['processed']       = 1;
 $already_running['counts']['ready'] = 1;
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $already_running;
+lunara_artwork_health_set_job( $already_running );
 $GLOBALS['lunara_artwork_health_state']['option_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['snapshot_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
@@ -415,7 +505,7 @@ lunara_artwork_health_assert_same( $already_running, $GLOBALS['lunara_artwork_he
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['snapshot_writes'], 'A stale start POST must not publish replacement full health.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A stale start POST must not claim a new transition by scheduling work.' );
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] = 'false_mismatch';
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['cleared'] = array();
@@ -429,7 +519,7 @@ lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_stat
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['cleared'], 'A failed canonical pause must not clear the worker schedule.' );
 
 $GLOBALS['lunara_artwork_health_state']['canonical_write_mode'] = 'success';
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['cleared'] = array();
 try {
 	Lunara_Review_Artwork_Backfill::handle_pause();
@@ -442,7 +532,7 @@ lunara_artwork_health_assert_same( array( 'lunara_review_artwork_backfill_tick' 
 
 $paused_resume = $already_running;
 $paused_resume['status'] = 'paused';
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $paused_resume;
+lunara_artwork_health_set_job( $paused_resume );
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
 try {
 	Lunara_Review_Artwork_Backfill::handle_start();
@@ -456,7 +546,7 @@ lunara_artwork_health_assert_same( array( 17, 18 ), $resumed['ids'], 'Resume mus
 lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['scheduled'] ), 'A verified resume must schedule the next worker.' );
 $GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['throw_image_refresh'] = true;
 Lunara_Review_Artwork_Backfill::process_next();
@@ -467,7 +557,7 @@ lunara_artwork_health_assert_same( 0, $interrupted_job['counts']['errors'], 'Inf
 lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['projection_writes'] ), 'A verified interrupted canonical pause must still project coherent compact state.' );
 $GLOBALS['lunara_artwork_health_state']['throw_image_refresh'] = false;
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
 $GLOBALS['lunara_artwork_health_state']['cleared'] = array();
@@ -480,6 +570,20 @@ lunara_artwork_health_assert_same( 1, $paused_after_current['processed'], 'Pause
 lunara_artwork_health_assert_same( 'paused', end( $GLOBALS['lunara_artwork_health_state']['projection_writes'] )['status'], 'The final compact projection after an interleaved pause must remain paused.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'An interleaved pause must suppress the next worker tick.' );
 
+$last_item_job          = $running_job;
+$last_item_job['ids']   = array( 17 );
+$last_item_job['total'] = 1;
+lunara_artwork_health_set_job( $last_item_job );
+$GLOBALS['lunara_artwork_health_state']['projection_writes']  = array();
+$GLOBALS['lunara_artwork_health_state']['scheduled']          = array();
+$GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] = true;
+Lunara_Review_Artwork_Backfill::process_next();
+$paused_after_last = $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'];
+lunara_artwork_health_assert_same( 'paused', $paused_after_last['status'], 'A pause that wins during the final refresh must remain paused instead of being overwritten by completion.' );
+lunara_artwork_health_assert_same( 1, $paused_after_last['processed'], 'Final-item pause reconciliation must preserve completed work.' );
+lunara_artwork_health_assert_same( 0, $paused_after_last['completed_at'], 'A pause-winning final item must not carry a completion timestamp.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A final-item interleaved pause must schedule no next tick.' );
+
 $idle_job = $running_job;
 $idle_job['status']       = 'idle';
 $idle_job['ids']          = array();
@@ -489,10 +593,11 @@ $idle_job['total']        = 0;
 $idle_job['started_at']   = 0;
 $idle_job['completed_at'] = 0;
 $idle_job['counts']       = array( 'ready' => 0, 'partial' => 0, 'conflicts' => 0, 'errors' => 0 );
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $idle_job;
+lunara_artwork_health_set_job( $idle_job );
 $GLOBALS['lunara_artwork_health_state']['job_change_during_census'] = $already_running;
 $GLOBALS['lunara_artwork_health_state']['option_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['snapshot_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
 $GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
 try {
@@ -502,8 +607,25 @@ try {
 }
 lunara_artwork_health_assert_same( $already_running, $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'], 'Start census work must not overwrite a canonical state change that wins after the initial read.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A lost start CAS must not schedule a replacement worker.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['snapshot_writes'], 'A lost start CAS must not publish stale census or credential health.' );
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $running_job;
+lunara_artwork_health_set_job( $idle_job );
+$GLOBALS['lunara_artwork_health_state']['credential_ready'] = false;
+$GLOBALS['lunara_artwork_health_state']['job_change_during_census'] = $already_running;
+$GLOBALS['lunara_artwork_health_state']['snapshot_writes'] = array();
+$GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
+try {
+	Lunara_Review_Artwork_Backfill::handle_start();
+} catch ( RuntimeException $error ) {
+	lunara_artwork_health_assert_same( 'redirect stop', $error->getMessage(), 'Credential-blocked interleaved start fixture must stop at its redirect.' );
+}
+lunara_artwork_health_assert_same( $already_running, $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'], 'Credential-blocked start work must preserve a concurrent canonical state change.' );
+lunara_artwork_health_assert_same( $already_running, $GLOBALS['lunara_artwork_health_state']['snapshot_writes'][0][1], 'Credential-blocked health must project the current canonical job instead of the stale pre-census job.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'Credential-blocked start must not schedule work.' );
+$GLOBALS['lunara_artwork_health_state']['credential_ready'] = true;
+
+lunara_artwork_health_set_job( $running_job );
 $GLOBALS['lunara_artwork_health_state']['job_change_before_write'] = $stale_complete;
 $GLOBALS['lunara_artwork_health_state']['projection_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['cleared'] = array();
@@ -520,7 +642,7 @@ $GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
 $complete_job = $running_job;
 $complete_job['ids']   = array( 17 );
 $complete_job['total'] = 1;
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $complete_job;
+lunara_artwork_health_set_job( $complete_job );
 $GLOBALS['lunara_artwork_health_state']['option_writes']     = array();
 $GLOBALS['lunara_artwork_health_state']['snapshot_writes']   = array();
 $GLOBALS['lunara_artwork_health_state']['census_allowed']    = true;
@@ -530,7 +652,7 @@ lunara_artwork_health_assert_same( 'complete', $GLOBALS['lunara_artwork_health_s
 lunara_artwork_health_assert_same( 1, $GLOBALS['lunara_artwork_health_state']['census_calls'], 'Completion seam may refresh full coverage exactly once.' );
 lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['snapshot_writes'] ), 'Completion seam must refresh one compact full projection.' );
 
-$GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'] = $complete_job;
+lunara_artwork_health_set_job( $complete_job );
 $GLOBALS['lunara_artwork_health_state']['option_writes']   = array();
 $GLOBALS['lunara_artwork_health_state']['snapshot_writes'] = array();
 $GLOBALS['lunara_artwork_health_state']['census_calls']    = 0;
@@ -541,7 +663,8 @@ lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_sta
 $GLOBALS['lunara_artwork_health_state']['throw_snapshot'] = false;
 
 $source = file_get_contents( $backfill );
-lunara_artwork_health_assert_same( 1, substr_count( $source, 'update_option( self::OPTION_KEY' ), 'Every full-job write must be centralized behind one persistence seam.' );
+lunara_artwork_health_assert_same( 0, substr_count( $source, 'update_option( self::OPTION_KEY' ), 'Canonical jobs must have no unfenced update_option write path.' );
+lunara_artwork_health_assert_same( 1, substr_count( $source, 'private static function persist_job_row' ), 'Every full-job write must be centralized behind one state-conditional persistence seam.' );
 lunara_artwork_health_assert( false === strpos( $source, 'load_movie_importer' ), 'Artwork health must not load the broad importer/admin stack.' );
 
 echo "Review artwork health regression checks passed.\n";
