@@ -16,6 +16,7 @@ final class Lunara_Review_Artwork_Backfill {
 	const WORK_HOOK    = 'lunara_review_artwork_backfill_tick';
 	const START_ACTION = 'lunara_review_artwork_backfill_start';
 	const PAUSE_ACTION = 'lunara_review_artwork_backfill_pause';
+	const REFRESH_ACTION = 'lunara_review_artwork_health_refresh';
 	const NONCE_ACTION = 'lunara_review_artwork_backfill_manage';
 	const LOCK_KEY     = 'lunara_review_artwork_backfill_lock';
 
@@ -30,6 +31,7 @@ final class Lunara_Review_Artwork_Backfill {
 		add_action( 'admin_menu', array( __CLASS__, 'register_page' ), 35 );
 		add_action( 'admin_post_' . self::START_ACTION, array( __CLASS__, 'handle_start' ) );
 		add_action( 'admin_post_' . self::PAUSE_ACTION, array( __CLASS__, 'handle_pause' ) );
+		add_action( 'admin_post_' . self::REFRESH_ACTION, array( __CLASS__, 'handle_refresh_health' ) );
 	}
 
 	/** Add the page beneath the singular Review menu. */
@@ -44,33 +46,48 @@ final class Lunara_Review_Artwork_Backfill {
 		);
 	}
 
-	/** Render the read-only census and guarded background-run controls. */
+	/** Render compact read-only health and guarded owner controls. */
 	public static function render_page() {
 		if ( ! current_user_can( 'edit_others_posts' ) ) {
 			wp_die( esc_html__( 'You do not have permission to audit Review artwork.', 'lunara-core' ) );
 		}
 
-		$census     = self::census();
+		$health     = Lunara_Core_Site_Studio_Bridge::review_identity_artwork_status();
+		$census     = $health['coverage'];
 		$job        = self::get_job();
-		$credential = self::credentials_status();
+		$credential = $health['credentials'];
 		$running    = 'running' === $job['status'];
 		?>
 		<div class="wrap lunara-review-artwork-audit">
 			<h1><?php esc_html_e( 'Review Artwork Audit', 'lunara-core' ); ?></h1>
 			<p><?php esc_html_e( 'This runner uses each Review’s canonical IMDb title ID to call the movie providers, localize the primary TMDb poster and backdrop, and reconnect automatic Review artwork. Custom and unmarked Media Library choices are never overwritten.', 'lunara-core' ); ?></p>
 
-			<?php if ( ! $credential['ready'] ) : ?>
+			<?php if ( ! $credential['known'] ) : ?>
+				<div class="notice notice-warning inline"><p><?php esc_html_e( 'Health is not known yet. Refresh the compact health snapshot to update coverage and credential readiness.', 'lunara-core' ); ?></p></div>
+			<?php elseif ( ! $credential['ready'] ) : ?>
 				<div class="notice notice-error inline"><p><?php esc_html_e( 'OMDb and TMDb credentials are not both available. The audit is safe to view, but the backfill cannot start.', 'lunara-core' ); ?></p></div>
 			<?php endif; ?>
 
+			<?php if ( isset( $_GET['health_snapshot'] ) && 'refreshed' === sanitize_key( wp_unslash( $_GET['health_snapshot'] ) ) ) : ?>
+				<div class="notice notice-success inline"><p><?php esc_html_e( 'Health snapshot refreshed.', 'lunara-core' ); ?></p></div>
+			<?php elseif ( isset( $_GET['health_snapshot'] ) && 'failed' === sanitize_key( wp_unslash( $_GET['health_snapshot'] ) ) ) : ?>
+				<div class="notice notice-error inline"><p><?php esc_html_e( 'Health snapshot refresh failed. No fresh state was reported.', 'lunara-core' ); ?></p></div>
+			<?php endif; ?>
+
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" style="margin:16px 0;">
+				<input type="hidden" name="action" value="<?php echo esc_attr( self::REFRESH_ACTION ); ?>">
+				<?php wp_nonce_field( self::NONCE_ACTION ); ?>
+				<?php submit_button( __( 'Refresh health snapshot', 'lunara-core' ), 'secondary', 'submit', false ); ?>
+			</form>
+
 			<table class="widefat striped" style="max-width:960px;margin:20px 0;">
 				<tbody>
-					<tr><th><?php esc_html_e( 'Reviews found', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['total'] ); ?></td></tr>
-					<tr><th><?php esc_html_e( 'Exact IMDb identities ready', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['identity_ready'] ); ?></td></tr>
-					<tr><th><?php esc_html_e( 'Missing IMDb identity', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['missing_identity'] ); ?></td></tr>
-					<tr><th><?php esc_html_e( 'Poster currently missing', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['missing_poster'] ); ?></td></tr>
-					<tr><th><?php esc_html_e( 'Banner currently missing', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['missing_backdrop'] ); ?></td></tr>
-					<tr><th><?php esc_html_e( 'Reviews with protected custom art', 'lunara-core' ); ?></th><td><?php echo esc_html( $census['custom_protected'] ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Reviews found', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['total'] ) ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Exact IMDb identities ready', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['identity_ready'] ) ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Missing IMDb identity', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['missing_identity'] ) ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Poster currently missing', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['missing_poster'] ) ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Banner currently missing', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['missing_backdrop'] ) ); ?></td></tr>
+					<tr><th><?php esc_html_e( 'Reviews with protected custom art', 'lunara-core' ); ?></th><td><?php echo esc_html( self::display_count( $census['custom_protected'] ) ); ?></td></tr>
 				</tbody>
 			</table>
 
@@ -123,7 +140,9 @@ final class Lunara_Review_Artwork_Backfill {
 	public static function handle_start() {
 		self::authorize();
 		$credential = self::credentials_status();
+		$coverage   = self::census();
 		if ( ! $credential['ready'] ) {
+			self::write_full_health_snapshot( $coverage, self::get_job(), $credential );
 			wp_safe_redirect( self::page_url() );
 			exit;
 		}
@@ -138,8 +157,9 @@ final class Lunara_Review_Artwork_Backfill {
 			$job['ids']        = $ids;
 			$job['total']      = count( $ids );
 			$job['started_at'] = time();
+			$job['completed_at'] = empty( $ids ) ? $job['started_at'] : 0;
 		}
-		update_option( self::OPTION_KEY, $job, false );
+		self::save_job( $job, true, $coverage, $credential );
 		if ( 'running' === $job['status'] ) {
 			self::schedule_next( 1 );
 		}
@@ -153,10 +173,24 @@ final class Lunara_Review_Artwork_Backfill {
 		self::authorize();
 		$job = self::get_job();
 		$job['status'] = 'paused';
-		update_option( self::OPTION_KEY, $job, false );
+		self::save_job( $job );
 		wp_clear_scheduled_hook( self::WORK_HOOK );
 		wp_safe_redirect( self::page_url() );
 		exit;
+	}
+
+	/** Refresh the compact owner health snapshot on explicit request only. */
+	public static function handle_refresh_health() {
+		self::authorize();
+		$refreshed = false;
+		try {
+			$refreshed = self::write_full_health_snapshot( self::census(), self::get_job(), self::credentials_status() );
+		} catch ( Throwable $error ) {
+			$refreshed = false;
+		}
+
+		$url = add_query_arg( 'health_snapshot', $refreshed ? 'refreshed' : 'failed', self::page_url() );
+		wp_safe_redirect( $url );
 	}
 
 	/** Process one Review, then yield before the next provider request set. */
@@ -171,7 +205,7 @@ final class Lunara_Review_Artwork_Backfill {
 			if ( $job['cursor'] >= $job['total'] || empty( $job['ids'][ $job['cursor'] ] ) ) {
 				$job['status']       = 'complete';
 				$job['completed_at'] = time();
-				update_option( self::OPTION_KEY, $job, false );
+				self::save_job( $job, true );
 				return;
 			}
 
@@ -191,12 +225,12 @@ final class Lunara_Review_Artwork_Backfill {
 				$job['status']       = 'complete';
 				$job['completed_at'] = time();
 			}
-			update_option( self::OPTION_KEY, $job, false );
+			self::save_job( $job, 'complete' === $job['status'] );
 		} catch ( Throwable $error ) {
 			$job['counts']['errors']++;
 			$job['status']     = 'paused';
 			$job['last_error'] = sanitize_text_field( $error->getMessage() );
-			update_option( self::OPTION_KEY, $job, false );
+			self::save_job( $job );
 		} finally {
 			delete_transient( self::LOCK_KEY );
 		}
@@ -269,10 +303,10 @@ final class Lunara_Review_Artwork_Backfill {
 
 	/** @return array<string,bool> */
 	private static function credentials_status() {
-		if ( class_exists( 'Lunara_Core' ) ) {
-			Lunara_Core::load_movie_importer();
+		if ( ! class_exists( 'Lunara_Movie_Provider_Gateway', false ) && class_exists( 'Lunara_Core', false ) && method_exists( 'Lunara_Core', 'load_movie_provider_gateway' ) ) {
+			Lunara_Core::load_movie_provider_gateway();
 		}
-		if ( ! class_exists( 'Lunara_Movie_Provider_Gateway' ) ) {
+		if ( ! class_exists( 'Lunara_Movie_Provider_Gateway', false ) ) {
 			return array( 'omdb' => false, 'tmdb' => false, 'ready' => false );
 		}
 		$gateway = new Lunara_Movie_Provider_Gateway();
@@ -312,6 +346,40 @@ final class Lunara_Review_Artwork_Backfill {
 			'counts'       => array( 'ready' => 0, 'partial' => 0, 'conflicts' => 0, 'errors' => 0 ),
 			'recent'       => array(),
 		);
+	}
+
+	/**
+	 * Persist the canonical full job first, then best-effort compact health.
+	 *
+	 * @param array<string,mixed>      $job         Already-loaded full job.
+	 * @param bool                     $refresh_full Whether this is a full refresh seam.
+	 * @param array<string,mixed>|null $coverage    Optional already-read census.
+	 * @param array<string,bool>|null  $credentials Optional already-read readiness.
+	 */
+	private static function save_job( $job, $refresh_full = false, $coverage = null, $credentials = null ) {
+		update_option( self::OPTION_KEY, $job, false );
+
+		try {
+			if ( $refresh_full ) {
+				$coverage    = is_array( $coverage ) ? $coverage : self::census();
+				$credentials = is_array( $credentials ) ? $credentials : self::credentials_status();
+				self::write_full_health_snapshot( $coverage, $job, $credentials );
+			} else {
+				Lunara_Core_Site_Studio_Bridge::update_artwork_health_job_projection( $job );
+			}
+		} catch ( Throwable $error ) {
+			// Compact snapshot failure must never interrupt the canonical job write.
+		}
+	}
+
+	/** @return bool */
+	private static function write_full_health_snapshot( $coverage, $job, $credentials ) {
+		return Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $coverage, $job, $credentials );
+	}
+
+	/** @param int|null $count Count or unknown. @return int|string */
+	private static function display_count( $count ) {
+		return null === $count ? __( 'Unknown', 'lunara-core' ) : max( 0, (int) $count );
 	}
 
 	private static function schedule_next( $delay ) {

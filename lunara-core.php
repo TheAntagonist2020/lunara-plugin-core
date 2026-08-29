@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.8.9
+ * Version: 0.8.10
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.8.9' );
+define( 'LUNARA_CORE_VERSION', '0.8.10' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -158,6 +158,17 @@ final class Lunara_Core {
     }
 
     /**
+     * Load only the narrow provider gateway used by owner health checks.
+     */
+    public static function load_movie_provider_gateway() {
+        if ( class_exists( 'Lunara_Movie_Provider_Gateway', false ) ) {
+            return;
+        }
+
+        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-provider-gateway.php';
+    }
+
+    /**
      * Load private Movie importer services in dependency order.
      */
     public static function load_movie_importer() {
@@ -168,7 +179,7 @@ final class Lunara_Core {
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-identity-lock.php';
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-import-contract.php';
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-repository.php';
-        require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-provider-gateway.php';
+        self::load_movie_provider_gateway();
         require_once LUNARA_CORE_DIR . 'includes/class-lunara-movie-importer.php';
         self::load_movie_import_admin();
     }

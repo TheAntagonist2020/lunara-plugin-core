@@ -62,7 +62,9 @@ jobs:
           php tests/review-cpt-workspace-regression.php
           php tests/review-image-studio-regression.php
           php tests/review-artwork-backfill-regression.php
+          php tests/review-artwork-health-regression.php
           php tests/site-studio-bridge-regression.php
+          php tests/site-studio-health-regression.php
 
       - name: PHP syntax
         run: |

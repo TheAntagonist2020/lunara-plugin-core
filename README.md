@@ -69,6 +69,14 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.10` adds capability-aware Site Studio handoffs for the canonical
+Carousel Manager and Review Identity & Artwork Audit. Carousel health is
+structural only. Review identity/artwork health comes from one compact,
+non-autoloaded, redacted owner snapshot; ordinary Site Studio and audit views
+do not scan Reviews or inspect credentials. Authorized owners can explicitly
+refresh that snapshot in Artwork Audit, while existing backfill writes update
+only bounded job progress and preserve the canonical full-job workflow.
+
 Core `0.8.9` adds an always-loaded, read-only bridge for Lunara Site Studio.
 `lunara_core_review_studio_admin_url()` opens the Review Library, a new Review,
 or an individually authorized Review workspace while returning the same safe
