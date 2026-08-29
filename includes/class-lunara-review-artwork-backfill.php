@@ -139,18 +139,23 @@ final class Lunara_Review_Artwork_Backfill {
 	/** Start or restart a complete exact-identity pass. */
 	public static function handle_start() {
 		self::authorize();
-		$credential = self::credentials_status();
-		$coverage   = self::census();
-		if ( ! $credential['ready'] ) {
-			self::write_full_health_snapshot( $coverage, self::get_job(), $credential );
+		$job = self::get_job();
+		if ( 'running' === $job['status'] ) {
 			wp_safe_redirect( self::page_url() );
 			exit;
 		}
 
-		$job = self::get_job();
+		$credential = self::credentials_status();
+		$coverage   = self::census();
+		if ( ! $credential['ready'] ) {
+			self::write_full_health_snapshot( $coverage, $job, $credential );
+			wp_safe_redirect( self::page_url() );
+			exit;
+		}
+
 		if ( 'paused' === $job['status'] && $job['cursor'] < $job['total'] ) {
 			$job['status'] = 'running';
-		} else {
+		} elseif ( in_array( $job['status'], array( 'idle', 'complete' ), true ) ) {
 			$ids = self::review_ids( true );
 			$job = self::empty_job();
 			$job['status']     = empty( $ids ) ? 'complete' : 'running';
@@ -158,9 +163,12 @@ final class Lunara_Review_Artwork_Backfill {
 			$job['total']      = count( $ids );
 			$job['started_at'] = time();
 			$job['completed_at'] = empty( $ids ) ? $job['started_at'] : 0;
+		} else {
+			wp_safe_redirect( self::page_url() );
+			exit;
 		}
-		self::save_job( $job, true, $coverage, $credential );
-		if ( 'running' === $job['status'] ) {
+		$saved = self::save_job( $job, true, $coverage, $credential );
+		if ( $saved && 'running' === $job['status'] ) {
 			self::schedule_next( 1 );
 		}
 
@@ -172,9 +180,12 @@ final class Lunara_Review_Artwork_Backfill {
 	public static function handle_pause() {
 		self::authorize();
 		$job = self::get_job();
-		$job['status'] = 'paused';
-		self::save_job( $job );
-		wp_clear_scheduled_hook( self::WORK_HOOK );
+		if ( 'running' === $job['status'] ) {
+			$job['status'] = 'paused';
+		}
+		if ( 'paused' === $job['status'] && self::save_job( $job ) ) {
+			wp_clear_scheduled_hook( self::WORK_HOOK );
+		}
 		wp_safe_redirect( self::page_url() );
 		exit;
 	}
@@ -201,6 +212,7 @@ final class Lunara_Review_Artwork_Backfill {
 		}
 
 		set_transient( self::LOCK_KEY, 1, MINUTE_IN_SECONDS );
+		$saved = false;
 		try {
 			if ( $job['cursor'] >= $job['total'] || empty( $job['ids'][ $job['cursor'] ] ) ) {
 				$job['status']       = 'complete';
@@ -225,17 +237,16 @@ final class Lunara_Review_Artwork_Backfill {
 				$job['status']       = 'complete';
 				$job['completed_at'] = time();
 			}
-			self::save_job( $job, 'complete' === $job['status'] );
+			$saved = self::save_job( $job, 'complete' === $job['status'] );
 		} catch ( Throwable $error ) {
-			$job['counts']['errors']++;
 			$job['status']     = 'paused';
 			$job['last_error'] = sanitize_text_field( $error->getMessage() );
-			self::save_job( $job );
+			$saved = self::save_job( $job );
 		} finally {
 			delete_transient( self::LOCK_KEY );
 		}
 
-		if ( 'running' === $job['status'] ) {
+		if ( $saved && 'running' === $job['status'] ) {
 			self::schedule_next( 8 );
 		}
 	}
@@ -355,9 +366,19 @@ final class Lunara_Review_Artwork_Backfill {
 	 * @param bool                     $refresh_full Whether this is a full refresh seam.
 	 * @param array<string,mixed>|null $coverage    Optional already-read census.
 	 * @param array<string,bool>|null  $credentials Optional already-read readiness.
+	 * @return bool Whether the exact canonical job was verified.
 	 */
 	private static function save_job( $job, $refresh_full = false, $coverage = null, $credentials = null ) {
-		update_option( self::OPTION_KEY, $job, false );
+		try {
+			update_option( self::OPTION_KEY, $job, false );
+			$stored = get_option( self::OPTION_KEY, null );
+		} catch ( Throwable $error ) {
+			return false;
+		}
+
+		if ( $stored !== $job ) {
+			return false;
+		}
 
 		try {
 			if ( $refresh_full ) {
@@ -370,6 +391,8 @@ final class Lunara_Review_Artwork_Backfill {
 		} catch ( Throwable $error ) {
 			// Compact snapshot failure must never interrupt the canonical job write.
 		}
+
+		return true;
 	}
 
 	/** @return bool */

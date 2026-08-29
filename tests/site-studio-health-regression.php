@@ -535,11 +535,61 @@ $invalid_running = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $invalid_running['known'], 'A running job with completion time must be rejected as unknown.' );
 lunara_core_health_assert_same( 'failed', $invalid_running['snapshot']['state'], 'Running jobs cannot carry completed_at.' );
 
-$paused_snapshot = $ready_snapshot;
+$reversed_complete = $ready_snapshot;
+$reversed_complete['job']['completed_at'] = $reversed_complete['job']['started_at'] - 1;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $reversed_complete;
+lunara_core_health_reset_memo();
+$invalid_timestamp_order = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $invalid_timestamp_order['known'], 'A complete job whose completion precedes its start must be rejected as unknown.' );
+lunara_core_health_assert_same( 'failed', $invalid_timestamp_order['snapshot']['state'], 'Reversed complete timestamps must fail strict snapshot normalization.' );
+
+$startless_running = $valid_snapshot;
+$startless_running['job']['processed']  = 0;
+$startless_running['job']['ready']      = 0;
+$startless_running['job']['started_at'] = 0;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $startless_running;
+lunara_core_health_reset_memo();
+$invalid_running_start = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $invalid_running_start['known'], 'Running work without a nonzero start time must be rejected.' );
+lunara_core_health_assert_same( 'failed', $invalid_running_start['snapshot']['state'], 'Startless active progress must fail strict normalization.' );
+
+$excess_running_errors = $valid_snapshot;
+$excess_running_errors['job']['processed'] = 0;
+$excess_running_errors['job']['ready']     = 0;
+$excess_running_errors['job']['errors']    = 999;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $excess_running_errors;
+lunara_core_health_reset_memo();
+$invalid_running_errors = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $invalid_running_errors['known'], 'Running errors beyond processed work must be rejected independently of timestamp validity.' );
+lunara_core_health_assert_same( 'failed', $invalid_running_errors['snapshot']['state'], 'Impossible active error counts must fail strict normalization.' );
+
+$impossible_conflicts = $valid_snapshot;
+$impossible_conflicts['job']['processed'] = 1;
+$impossible_conflicts['job']['ready']     = 1;
+$impossible_conflicts['job']['conflicts'] = 3;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $impossible_conflicts;
+lunara_core_health_reset_memo();
+lunara_core_health_assert_same( 'failed', lunara_core_review_identity_artwork_status()['snapshot']['state'], 'Conflict counts beyond two artwork slots per processed Review must be rejected.' );
+
+$impossible_idle = $valid_snapshot;
+$impossible_idle['job'] = array( 'known' => true, 'status' => 'idle', 'processed' => 0, 'total' => 1, 'ready' => 0, 'partial' => 0, 'conflicts' => 0, 'errors' => 0, 'started_at' => 0, 'completed_at' => 0 );
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $impossible_idle;
+lunara_core_health_reset_memo();
+lunara_core_health_assert_same( 'failed', lunara_core_review_identity_artwork_status()['snapshot']['state'], 'Idle health must remain an exact coherent zero state.' );
+
+$paused_snapshot = $valid_snapshot;
 $paused_snapshot['job']['status'] = 'paused';
 $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $paused_snapshot;
 lunara_core_health_reset_memo();
-lunara_core_health_assert_same( 'needs_attention', lunara_core_review_identity_artwork_status()['state'], 'Paused jobs must remain under needs-attention.' );
+$valid_paused = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( true, $valid_paused['job']['known'], 'Coherent paused progress must remain a known job projection.' );
+lunara_core_health_assert_same( 'needs_attention', $valid_paused['state'], 'Paused jobs must remain under needs-attention.' );
+
+$startless_paused = $paused_snapshot;
+$startless_paused['job']['started_at'] = 0;
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $startless_paused;
+lunara_core_health_reset_memo();
+lunara_core_health_assert_same( 'failed', lunara_core_review_identity_artwork_status()['snapshot']['state'], 'Paused progress requires a valid nonzero start time.' );
 
 $partial_snapshot = $ready_snapshot;
 $partial_snapshot['job']['ready']   = 34;
@@ -634,6 +684,17 @@ lunara_core_health_assert_same( false, $failed_readback, 'A post-write exact-rea
 lunara_core_health_assert_same( $prior_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Readback mismatch must restore the exact prior compact option value.' );
 lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'], 'Readback mismatch rollback must restore the prior autoload state.' );
 lunara_core_health_assert_same( 2, $GLOBALS['lunara_core_health_state']['update_calls'], 'Readback mismatch may add only one fenced rollback after the forward CAS.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['poison_on_update']  = 1;
+$GLOBALS['lunara_core_health_state']['fail_update_calls'] = array( 2 );
+$owned_rollback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $owned_rollback_failure, 'A failed fenced rollback must keep the refresh result failed.' );
+lunara_core_health_reset_memo();
+$after_owned_rollback_failure = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $after_owned_rollback_failure['known'], 'An unverified still-owned forward row must never become known after rollback failure.' );
+lunara_core_health_assert_same( 'failed', $after_owned_rollback_failure['snapshot']['state'], 'Rollback failure must durably fail-close an unverified still-owned forward row.' );
 
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );

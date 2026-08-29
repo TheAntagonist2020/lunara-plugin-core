@@ -584,7 +584,10 @@ final class Lunara_Core_Site_Studio_Bridge {
 			return true;
 		}
 
-		self::restore_artwork_option_row( $prior, $desired, $forward['option_id'] );
+		$restored = self::restore_artwork_option_row( $prior, $desired, $forward['option_id'] );
+		if ( ! $restored ) {
+			self::fail_close_artwork_option_row( $snapshot, $desired, $forward['option_id'] );
+		}
 		self::$artwork_status_memo = null;
 		return false;
 	}
@@ -701,6 +704,24 @@ final class Lunara_Core_Site_Studio_Bridge {
 		return self::rows_equal( $verified, $prior );
 	}
 
+	/** @param array<string,mixed> $snapshot Redacted normalized forward value. @param string $desired Serialized forward value. @param int $option_id Fenced forward-row identity. @return bool */
+	private static function fail_close_artwork_option_row( $snapshot, $desired, $option_id ) {
+		$current = self::read_artwork_option_row();
+		if ( ! self::row_matches( $current, $desired, 'no', $option_id ) ) {
+			return false;
+		}
+
+		$snapshot['snapshot_state'] = 'failed';
+		$snapshot['coverage']       = self::unknown_coverage();
+		$snapshot['job']            = self::unknown_job();
+		$snapshot['credentials']    = self::unknown_credentials();
+		$failed                     = self::serialize_artwork_option( $snapshot );
+		$write                      = self::replace_artwork_option_row( $current, $failed, 'no' );
+		$verified                   = self::read_artwork_option_row();
+
+		return self::row_matches( $verified, $failed, 'no', $write['option_id'] );
+	}
+
 	/** @param array<string,mixed> $row Row. @param string $value Serialized value. @param string $autoload Expected autoload. @param int $option_id Expected physical identity. @return bool */
 	private static function row_matches( $row, $value, $autoload, $option_id ) {
 		return $row['read_ok'] && $row['exists'] && $option_id > 0 && $option_id === $row['option_id'] && $value === $row['option_value'] && $autoload === $row['autoload'];
@@ -815,13 +836,31 @@ final class Lunara_Core_Site_Studio_Bridge {
 		if ( in_array( null, array( $processed, $total, $ready, $partial, $conflicts, $errors, $started_at, $completed_at ), true ) ) {
 			return null;
 		}
-		if ( $processed > $total || $ready + $partial > $processed ) {
+		// A processed Review can report a protected conflict for poster and backdrop.
+		$max_conflicts = $processed * 2;
+		if (
+			$processed > $total
+			|| $ready + $partial + $errors > $processed
+			|| $conflicts > $max_conflicts
+		) {
 			return null;
 		}
-		if ( 'complete' === $status && ( $processed !== $total || $completed_at <= 0 ) ) {
+		if (
+			'idle' === $status
+			&& ( 0 !== $processed || 0 !== $total || 0 !== $ready || 0 !== $partial || 0 !== $conflicts || 0 !== $errors || 0 !== $started_at || 0 !== $completed_at )
+		) {
 			return null;
 		}
-		if ( 'complete' !== $status && 0 !== $completed_at ) {
+		if (
+			in_array( $status, array( 'running', 'paused' ), true )
+			&& ( $started_at <= 0 || 0 !== $completed_at || $total <= 0 || $processed >= $total )
+		) {
+			return null;
+		}
+		if (
+			'complete' === $status
+			&& ( $processed !== $total || $started_at <= 0 || $completed_at < $started_at )
+		) {
 			return null;
 		}
 		return array(
