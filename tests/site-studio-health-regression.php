@@ -48,6 +48,7 @@ $GLOBALS['lunara_core_health_state'] = array(
 	'concurrent_on_start' => false,
 	'connected'           => true,
 	'reconnects'          => 0,
+	'throw_close'         => false,
 	'commit_success_read_errors' => false,
 	'taxonomies'         => array(),
 	'post_types'         => array( 'review' => true ),
@@ -235,11 +236,17 @@ final class Lunara_Core_Health_WPDB {
 	}
 
 	public function close() {
+		if ( $GLOBALS['lunara_core_health_state']['throw_close'] ) {
+			throw new RuntimeException( 'Lost close acknowledgement.' );
+		}
 		$this->disconnect();
 		return true;
 	}
 
 	public function db_connect( $allow_bail = true ) {
+		// wpdb replaces dbh while connecting; model the server rollback caused by
+		// abandoning any prior transactional handle even when close() lost ACK.
+		$this->disconnect();
 		$GLOBALS['lunara_core_health_state']['connected'] = true;
 		$GLOBALS['lunara_core_health_state']['reconnects']++;
 		return true;
@@ -433,6 +440,7 @@ function lunara_core_health_reset_option_io() {
 	$GLOBALS['lunara_core_health_state']['concurrent_on_start'] = false;
 	$GLOBALS['lunara_core_health_state']['connected']          = true;
 	$GLOBALS['lunara_core_health_state']['reconnects']         = 0;
+	$GLOBALS['lunara_core_health_state']['throw_close']         = false;
 	$GLOBALS['lunara_core_health_state']['commit_success_read_errors'] = false;
 }
 
@@ -815,6 +823,18 @@ lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['aut
 lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Ambiguous START must be resolved before any option-row mutation.' );
 lunara_core_health_assert_same( array( 'scheduled' => true ), isset( $GLOBALS['lunara_core_health_state']['options']['lunara_later_scheduled_event'] ) ? $GLOBALS['lunara_core_health_state']['options']['lunara_later_scheduled_event'] : null, 'A later schedule write must remain durable after disconnect, never vanish inside the unresolved START transaction.' );
 
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['start_applies_but_false'] = true;
+$GLOBALS['lunara_core_health_state']['fail_rollback']           = true;
+$GLOBALS['lunara_core_health_state']['throw_close']             = true;
+$lost_close_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $lost_close_start, 'An ambiguous START remains failed when closing the uncertain connection loses acknowledgement.' );
+lunara_core_health_assert_same( 1, $GLOBALS['lunara_core_health_state']['reconnects'], 'A close exception must not prevent the explicit fresh database connection attempt.' );
+lunara_core_health_assert_same( true, $GLOBALS['wpdb']->later_write( 'lunara_after_lost_close', array( 'durable' => true ) ), 'The replacement connection must accept later WordPress writes after a close exception.' );
+$GLOBALS['wpdb']->disconnect();
+lunara_core_health_assert_same( array( 'durable' => true ), isset( $GLOBALS['lunara_core_health_state']['options']['lunara_after_lost_close'] ) ? $GLOBALS['lunara_core_health_state']['options']['lunara_after_lost_close'] : null, 'A later write must remain durable after the close acknowledgement is lost.' );
+
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'] );
@@ -931,8 +951,8 @@ $owned_rollback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_s
 lunara_core_health_assert_same( false, $owned_rollback_failure, 'A failed transaction rollback must keep the refresh result failed.' );
 lunara_core_health_reset_memo();
 $after_owned_rollback_failure = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $after_owned_rollback_failure['known'], 'An unverified still-owned forward row must never become known after rollback failure.' );
-lunara_core_health_assert_same( 'failed', $after_owned_rollback_failure['snapshot']['state'], 'Rollback failure must durably fail-close an unverified still-owned forward row.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $after_owned_rollback_failure['snapshot']['generated_at'], 'Failed rollback cleanup must reconnect and expose only the exact durable prior row.' );
+lunara_core_health_assert_same( 1, $GLOBALS['lunara_core_health_state']['reconnects'], 'Failed rollback cleanup must replace the shared wpdb connection.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -940,9 +960,6 @@ $GLOBALS['lunara_core_health_state']['poison_on_update']  = 1;
 $GLOBALS['lunara_core_health_state']['fail_rollback']     = true;
 $double_repair_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $double_repair_failure, 'Forward verification plus lost rollback acknowledgement must keep the refresh failed.' );
-$same_request_unverified = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $same_request_unverified['known'], 'The same request must intrinsically reject a still-owned unverified physical row.' );
-lunara_core_health_assert_same( 'failed', $same_request_unverified['snapshot']['state'], 'The same request must expose an unverified physical row only as failed.' );
 $GLOBALS['wpdb']->disconnect();
 lunara_core_health_reset_bridge_request();
 lunara_core_health_assert_same( $prior_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Disconnect after a lost rollback acknowledgement must restore the exact transaction prestate.' );
@@ -1021,10 +1038,11 @@ $GLOBALS['lunara_core_health_state']['fail_rollback']    = true;
 $promotion_rollback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $promotion_rollback_failure, 'Promotion verification plus transaction rollback failure must remain failed.' );
 $same_request_uncommitted = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $same_request_uncommitted['known'], 'An unresolved uncommitted verified candidate must be rejected in the same request.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $same_request_uncommitted['snapshot']['generated_at'], 'Failed promotion cleanup must reconnect before the same request can observe the exact durable prior row.' );
 lunara_core_health_reset_memo();
 $fresh_uncommitted = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $fresh_uncommitted['known'], 'A fresh bridge read in the request must reject an unresolved uncommitted verified candidate.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $fresh_uncommitted['snapshot']['generated_at'], 'A fresh bridge read must continue to expose only the exact durable prior row.' );
+lunara_core_health_assert_same( 1, $GLOBALS['lunara_core_health_state']['reconnects'], 'Failed promotion rollback must replace the uncertain shared connection.' );
 
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );

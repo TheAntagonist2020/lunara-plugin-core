@@ -608,8 +608,9 @@ final class Lunara_Core_Site_Studio_Bridge {
 		}
 		if ( ! self::begin_artwork_option_transaction() ) {
 			// START may have applied even when its acknowledgement was lost.
-			// Roll back defensively before returning; no option row has changed.
-			self::rollback_artwork_option_transaction();
+			// Roll back defensively and replace the connection if cleanup is not
+			// acknowledged; no option row has changed.
+			self::abort_artwork_option_transaction();
 			self::$artwork_status_memo = null;
 			return false;
 		}
@@ -620,7 +621,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$forward                              = self::replace_artwork_option_row( $prior, $staged, 'no' );
 		$staged_read                          = self::read_artwork_option_row();
 		if ( ! self::row_matches( $staged_read, $staged, 'no', $forward['option_id'] ) ) {
-			self::rollback_artwork_option_transaction();
+			self::abort_artwork_option_transaction();
 			self::clear_artwork_option_cache();
 			self::$artwork_status_memo = null;
 			return false;
@@ -631,7 +632,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$verified      = self::row_matches( $verified_read, $desired, 'no', $promotion['option_id'] );
 		if ( ! $verified ) {
 			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
-			self::rollback_artwork_option_transaction();
+			self::abort_artwork_option_transaction();
 			self::clear_artwork_option_cache();
 			self::$artwork_status_memo = null;
 			return false;
@@ -639,7 +640,11 @@ final class Lunara_Core_Site_Studio_Bridge {
 
 		$committed = self::commit_artwork_option_transaction();
 		if ( ! $committed ) {
-			self::rollback_artwork_option_transaction();
+			if ( ! self::abort_artwork_option_transaction( true ) ) {
+				self::clear_artwork_option_cache();
+				self::$artwork_status_memo = null;
+				return false;
+			}
 		}
 
 		// Resolve the durable outcome after COMMIT. False means the desired
@@ -709,6 +714,34 @@ final class Lunara_Core_Site_Studio_Bridge {
 		global $wpdb;
 		try {
 			return is_object( $wpdb ) && method_exists( $wpdb, 'query' ) && false !== $wpdb->query( 'ROLLBACK' );
+		} catch ( Throwable $error ) {
+			return false;
+		}
+	}
+
+	/** @param bool $force_reconnect Whether durability must be read on a fresh connection. @return bool */
+	private static function abort_artwork_option_transaction( $force_reconnect = false ) {
+		$rolled_back = self::rollback_artwork_option_transaction();
+		if ( $rolled_back && ! $force_reconnect ) {
+			return true;
+		}
+		return self::reconnect_artwork_database();
+	}
+
+	/** @return bool Whether wpdb now owns a newly established connection. */
+	private static function reconnect_artwork_database() {
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || ! method_exists( $wpdb, 'close' ) || ! method_exists( $wpdb, 'db_connect' ) ) {
+			return false;
+		}
+		try {
+			$wpdb->close();
+		} catch ( Throwable $error ) {
+			// A lost close acknowledgement must not prevent replacing the
+			// potentially transactional connection below.
+		}
+		try {
+			return true === $wpdb->db_connect( false );
 		} catch ( Throwable $error ) {
 			return false;
 		}
