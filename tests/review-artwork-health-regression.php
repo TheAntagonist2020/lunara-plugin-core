@@ -31,6 +31,7 @@ $GLOBALS['lunara_artwork_health_state'] = array(
 	'projection_writes'   => array(),
 	'throw_snapshot'      => false,
 	'snapshot_write_ok'   => true,
+	'snapshot_write_outcome' => 'resolved',
 	'redirects'           => array(),
 	'throw_redirect'      => false,
 	'scheduled'           => array(),
@@ -143,6 +144,7 @@ function wp_parse_args( $args, $defaults ) { return array_merge( $defaults, is_a
 function absint( $value ) { return abs( (int) $value ); }
 function sanitize_key( $value ) { return strtolower( preg_replace( '/[^a-z0-9_\-]/', '', (string) $value ) ); }
 function sanitize_text_field( $value ) { return trim( strip_tags( (string) $value ) ); }
+function wp_unslash( $value ) { return $value; }
 function is_admin() { return true; }
 
 function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
@@ -269,8 +271,9 @@ final class Lunara_Core_Site_Studio_Bridge {
 		);
 	}
 
-	public static function write_artwork_health_snapshot( $coverage, $job, $credentials ) {
+	public static function write_artwork_health_snapshot( $coverage, $job, $credentials, &$outcome = null ) {
 		$GLOBALS['lunara_artwork_health_state']['snapshot_writes'][] = array( $coverage, $job, $credentials );
+		$outcome = $GLOBALS['lunara_artwork_health_state']['snapshot_write_outcome'];
 		if ( $GLOBALS['lunara_artwork_health_state']['throw_snapshot'] ) {
 			throw new RuntimeException( 'snapshot failure' );
 		}
@@ -404,6 +407,19 @@ $GLOBALS['lunara_artwork_health_state']['redirects']         = array();
 Lunara_Review_Artwork_Backfill::handle_refresh_health();
 lunara_artwork_health_assert( false !== strpos( end( $GLOBALS['lunara_artwork_health_state']['redirects'] ), 'health_snapshot=failed' ), 'Failed refresh writes must never report fresh.' );
 $GLOBALS['lunara_artwork_health_state']['snapshot_write_ok'] = true;
+
+$GLOBALS['lunara_artwork_health_state']['snapshot_write_outcome'] = 'indeterminate';
+$GLOBALS['lunara_artwork_health_state']['redirects'] = array();
+Lunara_Review_Artwork_Backfill::handle_refresh_health();
+lunara_artwork_health_assert( false !== strpos( end( $GLOBALS['lunara_artwork_health_state']['redirects'] ), 'health_snapshot=indeterminate' ), 'An indeterminate true publication must redirect to a fixed warning outcome, never refreshed.' );
+$_GET['health_snapshot'] = 'indeterminate';
+ob_start();
+Lunara_Review_Artwork_Backfill::render_page();
+$indeterminate_notice = ob_get_clean();
+unset( $_GET['health_snapshot'] );
+lunara_artwork_health_assert( false !== strpos( $indeterminate_notice, 'Health snapshot refresh could not be confirmed. No fresh state was reported.' ), 'Artwork Audit must render a fixed redacted warning for an indeterminate publication.' );
+lunara_artwork_health_assert( false === strpos( $indeterminate_notice, 'Health snapshot refreshed.' ), 'Indeterminate publication must never render the success notice.' );
+$GLOBALS['lunara_artwork_health_state']['snapshot_write_outcome'] = 'resolved';
 
 $running_job = array(
 	'status'       => 'running',
