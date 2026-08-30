@@ -21,6 +21,7 @@ $GLOBALS['lunara_core_health_state'] = array(
 	'rows'               => array(),
 	'autoloads'          => array(),
 	'next_option_id'     => 101,
+	'options_engine'     => 'InnoDB',
 	'option_reads'       => array(),
 	'option_writes'      => array(),
 	'cache_deletes'      => array(),
@@ -36,6 +37,9 @@ $GLOBALS['lunara_core_health_state'] = array(
 	'db_read_errors'     => 0,
 	'transaction_backup' => null,
 	'fail_commit'        => false,
+	'commit_applies_but_false' => false,
+	'commit_applies_but_throws' => false,
+	'commit_failure_read_errors' => false,
 	'fail_rollback'      => false,
 	'taxonomies'         => array(),
 	'post_types'         => array( 'review' => true ),
@@ -59,6 +63,9 @@ final class Lunara_Core_Health_WPDB {
 	}
 
 	public function get_row( $prepared, $output = null ) {
+		if ( is_array( $prepared ) && 0 === strpos( $prepared['query'], 'SHOW TABLE STATUS' ) ) {
+			return array( 'Engine' => $GLOBALS['lunara_core_health_state']['options_engine'] );
+		}
 		$key = is_array( $prepared ) ? $prepared['values'][0] : '';
 		if ( $GLOBALS['lunara_core_health_state']['db_read_errors'] > 0 ) {
 			$GLOBALS['lunara_core_health_state']['db_read_errors']--;
@@ -87,7 +94,18 @@ final class Lunara_Core_Health_WPDB {
 				return 1;
 			}
 			if ( 'COMMIT' === $prepared ) {
+				if ( $GLOBALS['lunara_core_health_state']['commit_applies_but_throws'] ) {
+					$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
+					throw new RuntimeException( 'simulated lost COMMIT acknowledgement' );
+				}
+				if ( $GLOBALS['lunara_core_health_state']['commit_applies_but_false'] ) {
+					$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
+					return false;
+				}
 				if ( $GLOBALS['lunara_core_health_state']['fail_commit'] ) {
+					if ( $GLOBALS['lunara_core_health_state']['commit_failure_read_errors'] ) {
+						$GLOBALS['lunara_core_health_state']['db_read_errors'] = 1;
+					}
 					return false;
 				}
 				$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
@@ -313,6 +331,13 @@ function lunara_core_health_reset_memo() {
 	$property->setValue( null, null );
 }
 
+function lunara_core_health_reset_bridge_request() {
+	lunara_core_health_reset_memo();
+	$property = new ReflectionProperty( 'Lunara_Core_Site_Studio_Bridge', 'artwork_uncommitted_rows' );
+	$property->setAccessible( true );
+	$property->setValue( null, array() );
+}
+
 function lunara_core_health_reset_option_io() {
 	$GLOBALS['lunara_core_health_state']['option_reads']      = array();
 	$GLOBALS['lunara_core_health_state']['option_writes']     = array();
@@ -329,6 +354,10 @@ function lunara_core_health_reset_option_io() {
 	$GLOBALS['lunara_core_health_state']['db_read_errors']    = 0;
 	$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
 	$GLOBALS['lunara_core_health_state']['fail_commit']       = false;
+	$GLOBALS['lunara_core_health_state']['commit_applies_but_false'] = false;
+	$GLOBALS['lunara_core_health_state']['commit_applies_but_throws'] = false;
+	$GLOBALS['lunara_core_health_state']['commit_failure_read_errors'] = false;
+	$GLOBALS['lunara_core_health_state']['options_engine']            = 'InnoDB';
 	$GLOBALS['lunara_core_health_state']['fail_rollback']     = false;
 }
 
@@ -637,6 +666,13 @@ $valid_paused = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( true, $valid_paused['job']['known'], 'Coherent paused progress must remain a known job projection.' );
 lunara_core_health_assert_same( 'needs_attention', $valid_paused['state'], 'Paused jobs must remain under needs-attention.' );
 
+$terminal_paused = $paused_snapshot;
+$terminal_paused['job']['processed'] = $terminal_paused['job']['total'];
+$terminal_paused['job']['ready']     = $terminal_paused['job']['total'];
+$GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $terminal_paused;
+lunara_core_health_reset_memo();
+lunara_core_health_assert_same( 'failed', lunara_core_review_identity_artwork_status()['snapshot']['state'], 'A paused processed=total projection is structurally invalid and must never be emitted by the owner.' );
+
 $startless_paused = $paused_snapshot;
 $startless_paused['job']['started_at'] = 0;
 $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] = $startless_paused;
@@ -682,6 +718,13 @@ lunara_core_health_assert_same( 'https://example.test/wp-admin/edit.php?post_typ
 $write_coverage = array( 'total' => 12, 'identity_ready' => 10, 'missing_identity' => 2, 'missing_poster' => 0, 'missing_backdrop' => 1, 'custom_protected' => 3, 'ids' => range( 1, 50 ) );
 $write_job = array( 'status' => 'complete', 'processed' => 10, 'total' => 10, 'counts' => array( 'ready' => 9, 'partial' => 1, 'conflicts' => 1, 'errors' => 0 ), 'started_at' => $now - 20, 'completed_at' => $now - 1, 'ids' => range( 1, 100 ), 'recent' => array( 'SECRET' ), 'last_error' => 'SECRET' );
 $write_credentials = array( 'omdb' => true, 'tmdb' => false, 'ready' => true, 'source' => 'SECRET', 'value' => 'SECRET' );
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'no' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['options_engine'] = 'MyISAM';
+$nontransactional_write = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $nontransactional_write, 'A changed snapshot must not enter publication when the physical options table cannot provide transactional promotion.' );
+lunara_core_health_assert_same( $valid_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Nontransactional publication refusal must preserve the exact prior snapshot.' );
+lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Nontransactional publication refusal must occur before staging any row.' );
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'] );
@@ -698,6 +741,8 @@ $write = $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_art
 lunara_core_health_assert_same( 'no', $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot']['autoload'], 'Snapshot writes must explicitly disable autoload in the physical row.' );
 lunara_core_health_assert_same( 'verified', $write['persistence_state'], 'Every newly written snapshot must carry an explicit durable verified marker.' );
 lunara_core_health_assert( in_array( array( 'notoptions', 'options' ), $GLOBALS['lunara_core_health_state']['cache_deletes'], true ), 'Absent physical inserts must invalidate WordPress negative-option cache state.' );
+$snapshot_cache_deletes = array_values( array_filter( $GLOBALS['lunara_core_health_state']['cache_deletes'], function ( $entry ) { return array( 'lunara_core_review_artwork_health_snapshot', 'options' ) === $entry; } ) );
+lunara_core_health_assert_same( 3, count( $snapshot_cache_deletes ), 'Successful staged publication must invalidate the individual option cache again after COMMIT.' );
 lunara_core_health_assert_same( 0, $write['coverage']['missing_poster'], 'Snapshot counts must preserve valid bounded nonnegative integers.' );
 lunara_core_health_assert_same( false, $write['credentials']['ready'], 'Credential readiness must be recomputed from the two provider booleans.' );
 foreach ( array( 'ids', 'recent', 'last_error', 'SECRET', 'source', 'value' ) as $forbidden ) {
@@ -779,9 +824,38 @@ lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['fail_commit'] = true;
 $commit_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $commit_failure, 'A verified candidate must not report success when its publication transaction cannot commit.' );
-lunara_core_health_reset_memo();
+lunara_core_health_reset_bridge_request();
 $after_commit_failure = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $after_commit_failure['known'], 'Commit failure must leave only the intrinsically unverified staged snapshot visible.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['commit_applies_but_false'] = true;
+$applied_commit = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( true, $applied_commit, 'An applied COMMIT with a lost acknowledgement must be resolved by exact post-commit physical readback, not reported as a failed publication.' );
+lunara_core_health_reset_bridge_request();
+$fresh_applied_commit = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( true, $fresh_applied_commit['known'], 'A genuinely fresh bridge request may accept the acknowledged-by-readback committed row.' );
+lunara_core_health_assert_same( 'fresh', $fresh_applied_commit['snapshot']['state'], 'Applied commit resolution must leave a fresh durable snapshot.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['commit_applies_but_throws'] = true;
+$thrown_applied_commit = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( true, $thrown_applied_commit, 'An applied COMMIT whose acknowledgement throws must resolve to success after exact durable readback.' );
+lunara_core_health_reset_bridge_request();
+lunara_core_health_assert_same( 'fresh', lunara_core_review_identity_artwork_status()['snapshot']['state'], 'A fresh request must accept the exactly resolved applied COMMIT after a thrown acknowledgement.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['fail_commit']                = true;
+$GLOBALS['lunara_core_health_state']['commit_failure_read_errors'] = true;
+$unreadable_commit_outcome = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( true, $unreadable_commit_outcome, 'An unreadable COMMIT outcome after exact pre-commit verification must not return the hard proved-failure boolean.' );
+lunara_core_health_reset_bridge_request();
+$fresh_unreadable_outcome = lunara_core_review_identity_artwork_status();
+lunara_core_health_assert_same( false, $fresh_unreadable_outcome['known'], 'A true indeterminate publication result must not make the durable unverified stage ordinarily fresh.' );
+lunara_core_health_assert_same( 'failed', $fresh_unreadable_outcome['snapshot']['state'], 'An actually uncommitted staged row must remain fail-closed after an unreadable outcome.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();

@@ -39,6 +39,7 @@ $GLOBALS['lunara_artwork_health_state'] = array(
 	'image_refresh_calls' => 0,
 	'throw_image_refresh' => false,
 	'pause_during_refresh' => false,
+	'job_change_after_pause' => null,
 	'job_change_during_census' => null,
 	'job_change_before_write' => null,
 );
@@ -319,6 +320,10 @@ final class Lunara_Review_Image_Studio {
 				}
 			}
 			$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
+			if ( is_array( $GLOBALS['lunara_artwork_health_state']['job_change_after_pause'] ) ) {
+				lunara_artwork_health_set_job( $GLOBALS['lunara_artwork_health_state']['job_change_after_pause'] );
+				$GLOBALS['lunara_artwork_health_state']['job_change_after_pause'] = null;
+			}
 		}
 		if ( $GLOBALS['lunara_artwork_health_state']['throw_image_refresh'] ) {
 			throw new RuntimeException( 'image refresh interruption' );
@@ -570,6 +575,23 @@ lunara_artwork_health_assert_same( 1, $paused_after_current['processed'], 'Pause
 lunara_artwork_health_assert_same( 'paused', end( $GLOBALS['lunara_artwork_health_state']['projection_writes'] )['status'], 'The final compact projection after an interleaved pause must remain paused.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'An interleaved pause must suppress the next worker tick.' );
 
+$concurrent_base                    = $already_running;
+$concurrent_base['ids']             = array( 17, 18, 19 );
+$concurrent_base['total']           = 3;
+$concurrent_paused                  = $concurrent_base;
+$concurrent_paused['status']        = 'paused';
+$concurrent_paused['last_error']    = 'concurrent-note';
+$concurrent_paused['recent'][]      = array( 'status' => 'concurrent-owner-note' );
+lunara_artwork_health_set_job( $concurrent_base );
+$GLOBALS['lunara_artwork_health_state']['projection_writes']    = array();
+$GLOBALS['lunara_artwork_health_state']['scheduled']            = array();
+$GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] = true;
+$GLOBALS['lunara_artwork_health_state']['job_change_after_pause'] = $concurrent_paused;
+Lunara_Review_Artwork_Backfill::process_next();
+lunara_artwork_health_assert_same( $concurrent_paused, $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'], 'Worker reconciliation must not adopt and overwrite a paused row with unrelated concurrent fields.' );
+lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['projection_writes'] ), 'A rejected reconciliation must not publish a second compact projection over the winning pause.' );
+lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A rejected concurrent reconciliation must schedule no next tick.' );
+
 $last_item_job          = $running_job;
 $last_item_job['ids']   = array( 17 );
 $last_item_job['total'] = 1;
@@ -580,9 +602,24 @@ $GLOBALS['lunara_artwork_health_state']['pause_during_refresh'] = true;
 Lunara_Review_Artwork_Backfill::process_next();
 $paused_after_last = $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'];
 lunara_artwork_health_assert_same( 'paused', $paused_after_last['status'], 'A pause that wins during the final refresh must remain paused instead of being overwritten by completion.' );
-lunara_artwork_health_assert_same( 1, $paused_after_last['processed'], 'Final-item pause reconciliation must preserve completed work.' );
+lunara_artwork_health_assert_same( 0, $paused_after_last['processed'], 'Final-item pause must retain the last coherent resumable checkpoint instead of publishing processed=total.' );
+lunara_artwork_health_assert_same( 0, $paused_after_last['cursor'], 'Final-item pause must remain resumable at the uncommitted final Review.' );
 lunara_artwork_health_assert_same( 0, $paused_after_last['completed_at'], 'A pause-winning final item must not carry a completion timestamp.' );
 lunara_artwork_health_assert_same( array(), $GLOBALS['lunara_artwork_health_state']['scheduled'], 'A final-item interleaved pause must schedule no next tick.' );
+lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['projection_writes'] ), 'Final-item pause must keep only the valid compact projection emitted by the winning pause.' );
+lunara_artwork_health_assert_same( 0, $GLOBALS['lunara_artwork_health_state']['projection_writes'][0]['processed'], 'The emitted paused projection must remain below total and acceptable to the real compact normalizer.' );
+$GLOBALS['lunara_artwork_health_state']['scheduled'] = array();
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = true;
+try {
+	Lunara_Review_Artwork_Backfill::handle_start();
+} catch ( RuntimeException $error ) {
+	lunara_artwork_health_assert_same( 'redirect stop', $error->getMessage(), 'Final-item resume fixture must stop at its redirect.' );
+}
+$resumed_last = $GLOBALS['lunara_artwork_health_state']['options']['lunara_review_artwork_backfill_job'];
+lunara_artwork_health_assert_same( 'running', $resumed_last['status'], 'A pause-winning final item must remain resumable through the authorized Start action.' );
+lunara_artwork_health_assert_same( 0, $resumed_last['cursor'], 'Final-item resume must restart from the coherent checkpoint.' );
+lunara_artwork_health_assert_same( 1, count( $GLOBALS['lunara_artwork_health_state']['scheduled'] ), 'Final-item resume must schedule the worker.' );
+$GLOBALS['lunara_artwork_health_state']['throw_redirect'] = false;
 
 $idle_job = $running_job;
 $idle_job['status']       = 'idle';
