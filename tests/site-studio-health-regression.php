@@ -43,6 +43,9 @@ $GLOBALS['lunara_core_health_state'] = array(
 	'fail_rollback'      => false,
 	'fail_start'         => false,
 	'throw_start'        => false,
+	'start_applies_but_false' => false,
+	'start_applies_but_throws' => false,
+	'concurrent_on_start' => false,
 	'taxonomies'         => array(),
 	'post_types'         => array( 'review' => true ),
 	'malicious_callback' => false,
@@ -88,6 +91,20 @@ final class Lunara_Core_Health_WPDB {
 	public function query( $prepared ) {
 		if ( is_string( $prepared ) ) {
 			if ( 'START TRANSACTION' === $prepared ) {
+				if ( $GLOBALS['lunara_core_health_state']['start_applies_but_false'] || $GLOBALS['lunara_core_health_state']['start_applies_but_throws'] ) {
+					$GLOBALS['lunara_core_health_state']['transaction_backup'] = array(
+						'rows'      => $GLOBALS['lunara_core_health_state']['rows'],
+						'options'   => $GLOBALS['lunara_core_health_state']['options'],
+						'autoloads' => $GLOBALS['lunara_core_health_state']['autoloads'],
+					);
+					if ( $GLOBALS['lunara_core_health_state']['start_applies_but_throws'] ) {
+						throw new RuntimeException( 'simulated lost START acknowledgement' );
+					}
+					return false;
+				}
+				if ( $GLOBALS['lunara_core_health_state']['concurrent_on_start'] ) {
+					lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', array( 'schema' => 'concurrent-invalid-row' ), 'yes' );
+				}
 				if ( $GLOBALS['lunara_core_health_state']['throw_start'] ) {
 					throw new RuntimeException( 'simulated START TRANSACTION exception' );
 				}
@@ -192,6 +209,16 @@ final class Lunara_Core_Health_WPDB {
 			$GLOBALS['lunara_core_health_state']['autoloads'][ $key ] = 'yes';
 		}
 		return 1;
+	}
+
+	public function disconnect() {
+		$backup = $GLOBALS['lunara_core_health_state']['transaction_backup'];
+		if ( is_array( $backup ) ) {
+			$GLOBALS['lunara_core_health_state']['rows']      = $backup['rows'];
+			$GLOBALS['lunara_core_health_state']['options']   = $backup['options'];
+			$GLOBALS['lunara_core_health_state']['autoloads'] = $backup['autoloads'];
+		}
+		$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
 	}
 }
 
@@ -369,6 +396,9 @@ function lunara_core_health_reset_option_io() {
 	$GLOBALS['lunara_core_health_state']['fail_rollback']     = false;
 	$GLOBALS['lunara_core_health_state']['fail_start']        = false;
 	$GLOBALS['lunara_core_health_state']['throw_start']       = false;
+	$GLOBALS['lunara_core_health_state']['start_applies_but_false'] = false;
+	$GLOBALS['lunara_core_health_state']['start_applies_but_throws'] = false;
+	$GLOBALS['lunara_core_health_state']['concurrent_on_start'] = false;
 }
 
 function lunara_core_health_poison_surface() {
@@ -738,12 +768,37 @@ lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['start_applies_but_false'] = true;
+$GLOBALS['lunara_core_health_state']['fail_rollback']           = true;
+$applied_false_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $applied_false_start, 'Applied-but-unacknowledged START false must remain a failed publication.' );
+$GLOBALS['wpdb']->disconnect();
+lunara_core_health_reset_bridge_request();
+lunara_core_health_assert_same( $valid_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Applied START false plus lost rollback acknowledgement must preserve exact prior bytes after disconnect.' );
+lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'], 'Applied START false must preserve legacy autoload after a fresh disconnect.' );
+lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Ambiguous START must be resolved before any option-row mutation.' );
+
+unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
+unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );
+unset( $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'] );
+lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['start_applies_but_throws'] = true;
+$GLOBALS['lunara_core_health_state']['fail_rollback']            = true;
+$applied_throw_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+lunara_core_health_assert_same( false, $applied_throw_start, 'Applied-but-unacknowledged throwing START must remain a failed publication.' );
+$GLOBALS['wpdb']->disconnect();
+lunara_core_health_reset_bridge_request();
+lunara_core_health_assert_same( false, isset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] ), 'Applied throwing START plus lost rollback acknowledgement must preserve exact prior absence after disconnect.' );
+lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Throwing ambiguous START must occur before any staged insert.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['fail_start'] = true;
 $failed_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $failed_start, 'A false START TRANSACTION must keep the publication failed.' );
 lunara_core_health_assert_same( $valid_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'False START must restore the exact prior compact value.' );
 lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'], 'False START must restore the exact legacy autoload state.' );
-lunara_core_health_assert_same( 2, $GLOBALS['lunara_core_health_state']['update_calls'], 'False START may perform only the staged write and one fenced exact restoration.' );
+lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'False START must occur before any staged option-row mutation.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -761,12 +816,12 @@ $GLOBALS['lunara_core_health_state']['fail_start'] = true;
 $absent_failed_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $absent_failed_start, 'False START from an absent prestate must remain failed.' );
 lunara_core_health_assert_same( false, isset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] ), 'False START must restore exact prior absence.' );
-lunara_core_health_assert_same( 2, $GLOBALS['lunara_core_health_state']['update_calls'], 'Absent START failure may perform only the staged insert and one fenced delete.' );
+lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Absent START failure must occur before any staged insert.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['fail_start']           = true;
-$GLOBALS['lunara_core_health_state']['concurrent_on_update'] = 1;
+$GLOBALS['lunara_core_health_state']['concurrent_on_start']  = true;
 $concurrent_failed_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $concurrent_failed_start, 'A failed START with a concurrent row must remain failed.' );
 lunara_core_health_assert_same( array( 'schema' => 'concurrent-invalid-row' ), $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Failed START restoration must not overwrite a concurrent nonmatching row.' );
