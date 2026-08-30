@@ -204,9 +204,15 @@ final class Lunara_Core_Health_WPDB {
 		}
 		if ( $call === $GLOBALS['lunara_core_health_state']['concurrent_on_update'] && isset( $GLOBALS['lunara_core_health_state']['rows'][ $key ] ) ) {
 			$row = $GLOBALS['lunara_core_health_state']['rows'][ $key ];
-			$GLOBALS['lunara_core_health_state']['rows'][ $key ] = array( 'option_id' => $row['option_id'], 'option_value' => serialize( array( 'schema' => 'concurrent-invalid-row' ) ), 'autoload' => 'yes' );
+			$concurrent = array( 'option_id' => $row['option_id'], 'option_value' => serialize( array( 'schema' => 'concurrent-invalid-row' ) ), 'autoload' => 'yes' );
+			$GLOBALS['lunara_core_health_state']['rows'][ $key ] = $concurrent;
 			$GLOBALS['lunara_core_health_state']['options'][ $key ] = array( 'schema' => 'concurrent-invalid-row' );
 			$GLOBALS['lunara_core_health_state']['autoloads'][ $key ] = 'yes';
+			if ( is_array( $GLOBALS['lunara_core_health_state']['transaction_backup'] ) ) {
+				$GLOBALS['lunara_core_health_state']['transaction_backup']['rows'][ $key ]      = $concurrent;
+				$GLOBALS['lunara_core_health_state']['transaction_backup']['options'][ $key ]   = array( 'schema' => 'concurrent-invalid-row' );
+				$GLOBALS['lunara_core_health_state']['transaction_backup']['autoloads'][ $key ] = 'yes';
+			}
 		}
 		return 1;
 	}
@@ -882,14 +888,14 @@ $failed_readback = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot
 lunara_core_health_assert_same( false, $failed_readback, 'A post-write exact-readback mismatch must fail closed.' );
 lunara_core_health_assert_same( $prior_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Readback mismatch must restore the exact prior compact option value.' );
 lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'], 'Readback mismatch rollback must restore the prior autoload state.' );
-lunara_core_health_assert_same( 2, $GLOBALS['lunara_core_health_state']['update_calls'], 'Readback mismatch may add only one fenced rollback after the forward CAS.' );
+lunara_core_health_assert_same( 1, $GLOBALS['lunara_core_health_state']['update_calls'], 'Readback mismatch must roll back the one staged mutation without a second option write.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['poison_on_update']  = 1;
-$GLOBALS['lunara_core_health_state']['fail_update_calls'] = array( 2 );
+$GLOBALS['lunara_core_health_state']['fail_rollback']     = true;
 $owned_rollback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
-lunara_core_health_assert_same( false, $owned_rollback_failure, 'A failed fenced rollback must keep the refresh result failed.' );
+lunara_core_health_assert_same( false, $owned_rollback_failure, 'A failed transaction rollback must keep the refresh result failed.' );
 lunara_core_health_reset_memo();
 $after_owned_rollback_failure = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $after_owned_rollback_failure['known'], 'An unverified still-owned forward row must never become known after rollback failure.' );
@@ -898,16 +904,15 @@ lunara_core_health_assert_same( 'failed', $after_owned_rollback_failure['snapsho
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['poison_on_update']  = 1;
-$GLOBALS['lunara_core_health_state']['fail_update_calls'] = array( 2, 3 );
+$GLOBALS['lunara_core_health_state']['fail_rollback']     = true;
 $double_repair_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
-lunara_core_health_assert_same( false, $double_repair_failure, 'Forward verification plus rollback plus fail-close failure must keep the refresh failed.' );
+lunara_core_health_assert_same( false, $double_repair_failure, 'Forward verification plus lost rollback acknowledgement must keep the refresh failed.' );
 $same_request_unverified = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $same_request_unverified['known'], 'The same request must intrinsically reject a still-owned unverified physical row.' );
 lunara_core_health_assert_same( 'failed', $same_request_unverified['snapshot']['state'], 'The same request must expose an unverified physical row only as failed.' );
-lunara_core_health_reset_memo();
-$fresh_read_unverified = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $fresh_read_unverified['known'], 'A fresh status instance/read must intrinsically reject the resident unverified row.' );
-lunara_core_health_assert_same( 'failed', $fresh_read_unverified['snapshot']['state'], 'A fresh read must never reinterpret an unverified row as fresh.' );
+$GLOBALS['wpdb']->disconnect();
+lunara_core_health_reset_bridge_request();
+lunara_core_health_assert_same( $prior_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Disconnect after a lost rollback acknowledgement must restore the exact transaction prestate.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -915,10 +920,10 @@ $GLOBALS['lunara_core_health_state']['poison_on_update'] = 2;
 $promotion_readback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $promotion_readback_failure, 'A successful verified promotion with failed exact final readback must report failure.' );
 $same_request_failed_promotion = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $same_request_failed_promotion['known'], 'Failed promotion readback must not leave same-request known health.' );
-lunara_core_health_reset_memo();
+lunara_core_health_assert_same( true, $same_request_failed_promotion['known'], 'Failed promotion readback must expose only the exact restored prior health.' );
+lunara_core_health_reset_bridge_request();
 $fresh_failed_promotion = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $fresh_failed_promotion['known'], 'Failed promotion readback must remain non-fresh to a fresh bridge read.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $fresh_failed_promotion['snapshot']['generated_at'], 'A fresh bridge read after failed promotion must see the exact prior snapshot, never the candidate.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -929,7 +934,7 @@ lunara_core_health_assert_same( false, $commit_failure, 'A verified candidate mu
 lunara_core_health_assert_same( 'failed', $commit_failure_outcome, 'A physically proved staged COMMIT outcome must remain determinate failure.' );
 lunara_core_health_reset_bridge_request();
 $after_commit_failure = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $after_commit_failure['known'], 'Commit failure must leave only the intrinsically unverified staged snapshot visible.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $after_commit_failure['snapshot']['generated_at'], 'Proved COMMIT failure must restore and expose only the prior snapshot.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -961,8 +966,7 @@ lunara_core_health_assert_same( true, $unreadable_commit_result, 'An unreadable 
 lunara_core_health_assert_same( 'indeterminate', $unreadable_outcome, 'Unreadable durability must be carried privately as indeterminate for the owner handler.' );
 lunara_core_health_reset_bridge_request();
 $fresh_unreadable_outcome = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( false, $fresh_unreadable_outcome['known'], 'A true indeterminate publication result must not make the durable unverified stage ordinarily fresh.' );
-lunara_core_health_assert_same( 'failed', $fresh_unreadable_outcome['snapshot']['state'], 'An actually uncommitted staged row must remain fail-closed after an unreadable outcome.' );
+lunara_core_health_assert_same( $prior_snapshot['generated_at'], $fresh_unreadable_outcome['snapshot']['generated_at'], 'An indeterminate true result with proved rollback must expose only the prior snapshot, never the candidate.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -984,12 +988,11 @@ $GLOBALS['lunara_core_health_state']['poison_on_update'] = 1;
 $absent_readback_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $absent_readback_failure, 'An absent-row post-insert readback mismatch must fail closed.' );
 lunara_core_health_assert_same( false, isset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] ), 'An absent-row mismatch must restore exact prior absence with a fenced delete.' );
-lunara_core_health_assert_same( 2, $GLOBALS['lunara_core_health_state']['update_calls'], 'Absent-row restoration may add only one fenced delete after the insert.' );
+lunara_core_health_assert_same( 1, $GLOBALS['lunara_core_health_state']['update_calls'], 'Absent-row rollback must restore absence without a second option write.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['concurrent_on_update'] = 1;
-$GLOBALS['lunara_core_health_state']['fail_update_calls'] = array( 2 );
 $rollback_failed = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $rollback_failed, 'Rollback failure must keep the refresh result failed.' );
 lunara_core_health_assert_same( array( 'schema' => 'concurrent-invalid-row' ), $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Rollback failure must not overwrite an unknown concurrent physical row.' );

@@ -606,6 +606,13 @@ final class Lunara_Core_Site_Studio_Bridge {
 			self::$artwork_status_memo = null;
 			return false;
 		}
+		if ( ! self::begin_artwork_option_transaction() ) {
+			// START may have applied even when its acknowledgement was lost.
+			// Roll back defensively before returning; no option row has changed.
+			self::rollback_artwork_option_transaction();
+			self::$artwork_status_memo = null;
+			return false;
+		}
 
 		$staged_snapshot                      = $snapshot;
 		$staged_snapshot['persistence_state'] = 'unverified';
@@ -613,13 +620,8 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$forward                              = self::replace_artwork_option_row( $prior, $staged, 'no' );
 		$staged_read                          = self::read_artwork_option_row();
 		if ( ! self::row_matches( $staged_read, $staged, 'no', $forward['option_id'] ) ) {
-			self::restore_artwork_option_row( $prior, $staged, $forward['option_id'] );
-			self::$artwork_status_memo = null;
-			return false;
-		}
-
-		if ( ! self::begin_artwork_option_transaction() ) {
-			self::restore_artwork_option_row( $prior, $staged, $forward['option_id'] );
+			self::rollback_artwork_option_transaction();
+			self::clear_artwork_option_cache();
 			self::$artwork_status_memo = null;
 			return false;
 		}
@@ -630,6 +632,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		if ( ! $verified ) {
 			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
 			self::rollback_artwork_option_transaction();
+			self::clear_artwork_option_cache();
 			self::$artwork_status_memo = null;
 			return false;
 		}
@@ -791,54 +794,9 @@ final class Lunara_Core_Site_Studio_Bridge {
 		return $outcome;
 	}
 
-	/** @param array<string,mixed> $prior Original row. @param string $desired Serialized forward value. @param int $option_id Fenced forward-row identity. @return bool */
-	private static function restore_artwork_option_row( $prior, $desired, $option_id ) {
-		global $wpdb;
-		if ( ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'query' ) || $option_id <= 0 ) {
-			return false;
-		}
-
-		try {
-			if ( $prior['exists'] ) {
-				$wpdb->query(
-					$wpdb->prepare(
-					"UPDATE {$wpdb->options} SET option_value = %s, autoload = %s WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
-					$prior['option_value'],
-					$prior['autoload'],
-					$option_id,
-					self::ARTWORK_HEALTH_OPTION,
-					$desired,
-					'no'
-					)
-				);
-			} else {
-				$wpdb->query(
-					$wpdb->prepare(
-					"DELETE FROM {$wpdb->options} WHERE option_id = %d AND option_name = %s AND BINARY option_value = BINARY %s AND BINARY autoload = BINARY %s LIMIT 1",
-					$option_id,
-					self::ARTWORK_HEALTH_OPTION,
-					$desired,
-					'no'
-					)
-				);
-			}
-		} catch ( Throwable $error ) {
-			return false;
-		}
-
-		self::clear_artwork_option_cache();
-		$verified = self::read_artwork_option_row();
-		return self::rows_equal( $verified, $prior );
-	}
-
 	/** @param array<string,mixed> $row Row. @param string $value Serialized value. @param string $autoload Expected autoload. @param int $option_id Expected physical identity. @return bool */
 	private static function row_matches( $row, $value, $autoload, $option_id ) {
 		return $row['read_ok'] && $row['exists'] && $option_id > 0 && $option_id === $row['option_id'] && $value === $row['option_value'] && $autoload === $row['autoload'];
-	}
-
-	/** @param array<string,mixed> $left Row. @param array<string,mixed> $right Row. @return bool */
-	private static function rows_equal( $left, $right ) {
-		return $left['read_ok'] && $right['read_ok'] && $left['exists'] === $right['exists'] && ( ! $left['exists'] || ( $left['option_id'] === $right['option_id'] && $left['option_value'] === $right['option_value'] && $left['autoload'] === $right['autoload'] ) );
 	}
 
 	/** @param string $autoload Autoload state. @return bool */
