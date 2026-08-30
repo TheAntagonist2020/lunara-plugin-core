@@ -46,6 +46,9 @@ $GLOBALS['lunara_core_health_state'] = array(
 	'start_applies_but_false' => false,
 	'start_applies_but_throws' => false,
 	'concurrent_on_start' => false,
+	'connected'           => true,
+	'reconnects'          => 0,
+	'commit_success_read_errors' => false,
 	'taxonomies'         => array(),
 	'post_types'         => array( 'review' => true ),
 	'malicious_callback' => false,
@@ -134,6 +137,9 @@ final class Lunara_Core_Health_WPDB {
 					return false;
 				}
 				$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
+				if ( $GLOBALS['lunara_core_health_state']['commit_success_read_errors'] ) {
+					$GLOBALS['lunara_core_health_state']['db_read_errors'] = 1;
+				}
 				return 1;
 			}
 			if ( 'ROLLBACK' === $prepared ) {
@@ -225,6 +231,26 @@ final class Lunara_Core_Health_WPDB {
 			$GLOBALS['lunara_core_health_state']['autoloads'] = $backup['autoloads'];
 		}
 		$GLOBALS['lunara_core_health_state']['transaction_backup'] = null;
+		$GLOBALS['lunara_core_health_state']['connected'] = false;
+	}
+
+	public function close() {
+		$this->disconnect();
+		return true;
+	}
+
+	public function db_connect( $allow_bail = true ) {
+		$GLOBALS['lunara_core_health_state']['connected'] = true;
+		$GLOBALS['lunara_core_health_state']['reconnects']++;
+		return true;
+	}
+
+	public function later_write( $key, $value ) {
+		if ( ! $GLOBALS['lunara_core_health_state']['connected'] ) {
+			return false;
+		}
+		lunara_core_health_set_physical_option( $key, $value, 'no' );
+		return true;
 	}
 }
 
@@ -405,6 +431,9 @@ function lunara_core_health_reset_option_io() {
 	$GLOBALS['lunara_core_health_state']['start_applies_but_false'] = false;
 	$GLOBALS['lunara_core_health_state']['start_applies_but_throws'] = false;
 	$GLOBALS['lunara_core_health_state']['concurrent_on_start'] = false;
+	$GLOBALS['lunara_core_health_state']['connected']          = true;
+	$GLOBALS['lunara_core_health_state']['reconnects']         = 0;
+	$GLOBALS['lunara_core_health_state']['commit_success_read_errors'] = false;
 }
 
 function lunara_core_health_poison_surface() {
@@ -778,11 +807,13 @@ $GLOBALS['lunara_core_health_state']['start_applies_but_false'] = true;
 $GLOBALS['lunara_core_health_state']['fail_rollback']           = true;
 $applied_false_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $applied_false_start, 'Applied-but-unacknowledged START false must remain a failed publication.' );
+lunara_core_health_assert_same( true, $GLOBALS['wpdb']->later_write( 'lunara_later_scheduled_event', array( 'scheduled' => true ) ), 'The caller must be able to perform its later schedule write on a clean connection.' );
 $GLOBALS['wpdb']->disconnect();
 lunara_core_health_reset_bridge_request();
 lunara_core_health_assert_same( $valid_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Applied START false plus lost rollback acknowledgement must preserve exact prior bytes after disconnect.' );
 lunara_core_health_assert_same( 'yes', $GLOBALS['lunara_core_health_state']['autoloads']['lunara_core_review_artwork_health_snapshot'], 'Applied START false must preserve legacy autoload after a fresh disconnect.' );
 lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Ambiguous START must be resolved before any option-row mutation.' );
+lunara_core_health_assert_same( array( 'scheduled' => true ), isset( $GLOBALS['lunara_core_health_state']['options']['lunara_later_scheduled_event'] ) ? $GLOBALS['lunara_core_health_state']['options']['lunara_later_scheduled_event'] : null, 'A later schedule write must remain durable after disconnect, never vanish inside the unresolved START transaction.' );
 
 unset( $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'] );
 unset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] );
@@ -792,10 +823,12 @@ $GLOBALS['lunara_core_health_state']['start_applies_but_throws'] = true;
 $GLOBALS['lunara_core_health_state']['fail_rollback']            = true;
 $applied_throw_start = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
 lunara_core_health_assert_same( false, $applied_throw_start, 'Applied-but-unacknowledged throwing START must remain a failed publication.' );
+lunara_core_health_assert_same( true, $GLOBALS['wpdb']->later_write( 'lunara_later_lock_cleanup', array( 'deleted' => true ) ), 'The caller must perform later lock cleanup on a clean connection.' );
 $GLOBALS['wpdb']->disconnect();
 lunara_core_health_reset_bridge_request();
 lunara_core_health_assert_same( false, isset( $GLOBALS['lunara_core_health_state']['rows']['lunara_core_review_artwork_health_snapshot'] ), 'Applied throwing START plus lost rollback acknowledgement must preserve exact prior absence after disconnect.' );
 lunara_core_health_assert_same( 0, $GLOBALS['lunara_core_health_state']['update_calls'], 'Throwing ambiguous START must occur before any staged insert.' );
+lunara_core_health_assert_same( array( 'deleted' => true ), isset( $GLOBALS['lunara_core_health_state']['options']['lunara_later_lock_cleanup'] ) ? $GLOBALS['lunara_core_health_state']['options']['lunara_later_lock_cleanup'] : null, 'A later lock cleanup write must remain durable after disconnect.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $valid_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
@@ -938,6 +971,20 @@ lunara_core_health_assert_same( $prior_snapshot['generated_at'], $after_commit_f
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
+$GLOBALS['lunara_core_health_state']['fail_commit']   = true;
+$GLOBALS['lunara_core_health_state']['fail_rollback'] = true;
+$failed_commit_rollback_outcome = null;
+$failed_commit_rollback = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $failed_commit_rollback_outcome );
+lunara_core_health_assert_same( false, $failed_commit_rollback, 'Failed COMMIT plus failed ROLLBACK must never treat same-connection candidate visibility as durable success.' );
+lunara_core_health_assert_same( 'failed', $failed_commit_rollback_outcome, 'Uncertain COMMIT cleanup must not produce resolved outcome.' );
+lunara_core_health_assert_same( true, $GLOBALS['wpdb']->later_write( 'lunara_after_commit_cleanup', array( 'durable' => true ) ), 'Later writes after uncertain COMMIT cleanup must use the replacement connection.' );
+$GLOBALS['wpdb']->disconnect();
+lunara_core_health_reset_bridge_request();
+lunara_core_health_assert_same( $prior_snapshot, $GLOBALS['lunara_core_health_state']['options']['lunara_core_review_artwork_health_snapshot'], 'Fresh disconnect after failed COMMIT/ROLLBACK must expose exact durable prior state.' );
+lunara_core_health_assert_same( array( 'durable' => true ), isset( $GLOBALS['lunara_core_health_state']['options']['lunara_after_commit_cleanup'] ) ? $GLOBALS['lunara_core_health_state']['options']['lunara_after_commit_cleanup'] : null, 'Later write after failed COMMIT/ROLLBACK cleanup must remain durable.' );
+
+lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
+lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['commit_applies_but_false'] = true;
 $applied_commit_outcome = null;
 $applied_commit = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $applied_commit_outcome );
@@ -958,15 +1005,14 @@ lunara_core_health_assert_same( 'fresh', lunara_core_review_identity_artwork_sta
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
-$GLOBALS['lunara_core_health_state']['fail_commit']                = true;
-$GLOBALS['lunara_core_health_state']['commit_failure_read_errors'] = true;
+$GLOBALS['lunara_core_health_state']['commit_success_read_errors'] = true;
 $unreadable_outcome = null;
 $unreadable_commit_result = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $unreadable_outcome );
 lunara_core_health_assert_same( true, $unreadable_commit_result, 'An unreadable COMMIT outcome after exact pre-commit verification must not return the hard proved-failure boolean.' );
 lunara_core_health_assert_same( 'indeterminate', $unreadable_outcome, 'Unreadable durability must be carried privately as indeterminate for the owner handler.' );
 lunara_core_health_reset_bridge_request();
 $fresh_unreadable_outcome = lunara_core_review_identity_artwork_status();
-lunara_core_health_assert_same( $prior_snapshot['generated_at'], $fresh_unreadable_outcome['snapshot']['generated_at'], 'An indeterminate true result with proved rollback must expose only the prior snapshot, never the candidate.' );
+lunara_core_health_assert_same( 'fresh', $fresh_unreadable_outcome['snapshot']['state'], 'Acknowledged COMMIT with unreadable exact outcome may remain durable while the owner receives the fixed indeterminate warning.' );
 
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
