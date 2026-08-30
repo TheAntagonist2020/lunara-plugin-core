@@ -193,19 +193,21 @@ final class Lunara_Core_Site_Studio_Bridge {
 	 * @param mixed $coverage    Current census projection.
 	 * @param mixed $job         Already-loaded full job.
 	 * @param mixed $credentials Narrow credential booleans.
+	 * @param string|null $outcome Request-local resolved|failed|indeterminate outcome.
 	 * @return bool False only when the desired verified row is proved non-durable;
 	 *              true also covers an unreadable COMMIT outcome after exact
 	 *              staged and promoted verification.
 	 */
-	public static function write_artwork_health_snapshot( $coverage, $job, $credentials ) {
+	public static function write_artwork_health_snapshot( $coverage, $job, $credentials, &$outcome = null ) {
 		$now      = self::bounded_timestamp( time() );
 		$snapshot = self::build_snapshot( $coverage, $job, $credentials, $now, min( self::MAX_TIMESTAMP, $now + self::SNAPSHOT_TTL ), false );
 
+		$outcome                  = 'failed';
 		self::$artwork_status_memo = null;
 		if ( null === $snapshot ) {
 			return false;
 		}
-		return self::persist_artwork_snapshot( $snapshot );
+		return self::persist_artwork_snapshot( $snapshot, $outcome );
 	}
 
 	/**
@@ -577,7 +579,8 @@ final class Lunara_Core_Site_Studio_Bridge {
 	 * @param array<string,mixed> $snapshot Strict normalized snapshot.
 	 * @return bool
 	 */
-	private static function persist_artwork_snapshot( $snapshot ) {
+	private static function persist_artwork_snapshot( $snapshot, &$outcome = null ) {
+		$outcome = 'failed';
 		$prior = self::read_artwork_option_row();
 		if ( ! $prior['read_ok'] ) {
 			return false;
@@ -587,6 +590,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$desired                       = self::serialize_artwork_option( $snapshot );
 		if ( $prior['exists'] && $desired === $prior['option_value'] ) {
 			if ( self::autoload_is_disabled( $prior['autoload'] ) ) {
+				$outcome = 'resolved';
 				self::$artwork_status_memo = null;
 				return true;
 			}
@@ -594,6 +598,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 			$autoload_write = self::replace_artwork_option_row( $prior, $desired, 'no' );
 			$autoload_read  = self::read_artwork_option_row();
 			$autoload_ok    = self::row_matches( $autoload_read, $desired, 'no', $autoload_write['option_id'] );
+			$outcome        = $autoload_ok ? 'resolved' : 'failed';
 			self::$artwork_status_memo = null;
 			return $autoload_ok;
 		}
@@ -614,6 +619,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 		}
 
 		if ( ! self::begin_artwork_option_transaction() ) {
+			self::restore_artwork_option_row( $prior, $staged, $forward['option_id'] );
 			self::$artwork_status_memo = null;
 			return false;
 		}
@@ -640,11 +646,13 @@ final class Lunara_Core_Site_Studio_Bridge {
 		$durable = self::read_artwork_option_row();
 		self::clear_artwork_option_cache();
 		if ( self::row_matches( $durable, $desired, 'no', $promotion['option_id'] ) ) {
+			$outcome = 'resolved';
 			unset( self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] );
 			self::$artwork_status_memo = null;
 			return true;
 		}
 		if ( ! $durable['read_ok'] ) {
+			$outcome = 'indeterminate';
 			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
 			self::$artwork_status_memo = null;
 			return true;

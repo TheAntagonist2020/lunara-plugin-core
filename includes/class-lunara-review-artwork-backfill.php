@@ -70,6 +70,8 @@ final class Lunara_Review_Artwork_Backfill {
 
 			<?php if ( isset( $_GET['health_snapshot'] ) && 'refreshed' === sanitize_key( wp_unslash( $_GET['health_snapshot'] ) ) ) : ?>
 				<div class="notice notice-success inline"><p><?php esc_html_e( 'Health snapshot refreshed.', 'lunara-core' ); ?></p></div>
+			<?php elseif ( isset( $_GET['health_snapshot'] ) && 'indeterminate' === sanitize_key( wp_unslash( $_GET['health_snapshot'] ) ) ) : ?>
+				<div class="notice notice-warning inline"><p><?php esc_html_e( 'Health snapshot refresh could not be confirmed. No fresh state was reported.', 'lunara-core' ); ?></p></div>
 			<?php elseif ( isset( $_GET['health_snapshot'] ) && 'failed' === sanitize_key( wp_unslash( $_GET['health_snapshot'] ) ) ) : ?>
 				<div class="notice notice-error inline"><p><?php esc_html_e( 'Health snapshot refresh failed. No fresh state was reported.', 'lunara-core' ); ?></p></div>
 			<?php endif; ?>
@@ -206,14 +208,17 @@ final class Lunara_Review_Artwork_Backfill {
 	/** Refresh the compact owner health snapshot on explicit request only. */
 	public static function handle_refresh_health() {
 		self::authorize();
-		$refreshed = false;
+		$published = false;
+		$outcome   = 'failed';
 		try {
-			$refreshed = self::write_full_health_snapshot( self::census(), self::get_job(), self::credentials_status() );
+			$published = self::write_full_health_snapshot( self::census(), self::get_job(), self::credentials_status(), $outcome );
 		} catch ( Throwable $error ) {
-			$refreshed = false;
+			$published = false;
+			$outcome   = 'failed';
 		}
 
-		$url = add_query_arg( 'health_snapshot', $refreshed ? 'refreshed' : 'failed', self::page_url() );
+		$result = $published && 'resolved' === $outcome ? 'refreshed' : ( $published && 'indeterminate' === $outcome ? 'indeterminate' : 'failed' );
+		$url    = add_query_arg( 'health_snapshot', $result, self::page_url() );
 		wp_safe_redirect( $url );
 	}
 
@@ -626,8 +631,8 @@ final class Lunara_Review_Artwork_Backfill {
 	}
 
 	/** @return bool */
-	private static function write_full_health_snapshot( $coverage, $job, $credentials ) {
-		return Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $coverage, $job, $credentials );
+	private static function write_full_health_snapshot( $coverage, $job, $credentials, &$outcome = null ) {
+		return Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $coverage, $job, $credentials, $outcome );
 	}
 
 	/** @param int|null $count Count or unknown. @return int|string */

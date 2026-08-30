@@ -868,8 +868,10 @@ lunara_core_health_assert_same( false, $fresh_failed_promotion['known'], 'Failed
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['fail_commit'] = true;
-$commit_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+$commit_failure_outcome = null;
+$commit_failure = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $commit_failure_outcome );
 lunara_core_health_assert_same( false, $commit_failure, 'A verified candidate must not report success when its publication transaction cannot commit.' );
+lunara_core_health_assert_same( 'failed', $commit_failure_outcome, 'A physically proved staged COMMIT outcome must remain determinate failure.' );
 lunara_core_health_reset_bridge_request();
 $after_commit_failure = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $after_commit_failure['known'], 'Commit failure must leave only the intrinsically unverified staged snapshot visible.' );
@@ -877,8 +879,10 @@ lunara_core_health_assert_same( false, $after_commit_failure['known'], 'Commit f
 lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snapshot', $prior_snapshot, 'yes' );
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['commit_applies_but_false'] = true;
-$applied_commit = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
+$applied_commit_outcome = null;
+$applied_commit = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $applied_commit_outcome );
 lunara_core_health_assert_same( true, $applied_commit, 'An applied COMMIT with a lost acknowledgement must be resolved by exact post-commit physical readback, not reported as a failed publication.' );
+lunara_core_health_assert_same( 'resolved', $applied_commit_outcome, 'Exact applied COMMIT readback must expose only a request-local resolved outcome.' );
 lunara_core_health_reset_bridge_request();
 $fresh_applied_commit = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( true, $fresh_applied_commit['known'], 'A genuinely fresh bridge request may accept the acknowledged-by-readback committed row.' );
@@ -896,8 +900,10 @@ lunara_core_health_set_physical_option( 'lunara_core_review_artwork_health_snaps
 lunara_core_health_reset_option_io();
 $GLOBALS['lunara_core_health_state']['fail_commit']                = true;
 $GLOBALS['lunara_core_health_state']['commit_failure_read_errors'] = true;
-$unreadable_commit_outcome = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials );
-lunara_core_health_assert_same( true, $unreadable_commit_outcome, 'An unreadable COMMIT outcome after exact pre-commit verification must not return the hard proved-failure boolean.' );
+$unreadable_outcome = null;
+$unreadable_commit_result = Lunara_Core_Site_Studio_Bridge::write_artwork_health_snapshot( $write_coverage, $write_job, $write_credentials, $unreadable_outcome );
+lunara_core_health_assert_same( true, $unreadable_commit_result, 'An unreadable COMMIT outcome after exact pre-commit verification must not return the hard proved-failure boolean.' );
+lunara_core_health_assert_same( 'indeterminate', $unreadable_outcome, 'Unreadable durability must be carried privately as indeterminate for the owner handler.' );
 lunara_core_health_reset_bridge_request();
 $fresh_unreadable_outcome = lunara_core_review_identity_artwork_status();
 lunara_core_health_assert_same( false, $fresh_unreadable_outcome['known'], 'A true indeterminate publication result must not make the durable unverified stage ordinarily fresh.' );
