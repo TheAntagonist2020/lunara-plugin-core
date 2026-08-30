@@ -436,15 +436,13 @@ final class Lunara_Review_Artwork_Backfill {
 
 	/** @return array<string,mixed>|false */
 	private static function reconcile_paused_worker_progress( $base_job, $advanced_job ) {
-		$latest = self::get_job_state();
+		$latest          = self::get_job_state();
+		$expected_paused = $base_job;
+		$expected_paused['status'] = 'paused';
 		if (
 			null === $latest
-			|| 'paused' !== $latest['job']['status']
-			|| $latest['job']['ids'] !== $base_job['ids']
-			|| $latest['job']['cursor'] !== $base_job['cursor']
-			|| $latest['job']['processed'] !== $base_job['processed']
-			|| $latest['job']['total'] !== $base_job['total']
-			|| $latest['job']['started_at'] !== $base_job['started_at']
+			|| $latest['job'] !== $expected_paused
+			|| $advanced_job['cursor'] >= $advanced_job['total']
 		) {
 			return false;
 		}

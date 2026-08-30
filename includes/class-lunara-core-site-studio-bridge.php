@@ -193,7 +193,9 @@ final class Lunara_Core_Site_Studio_Bridge {
 	 * @param mixed $coverage    Current census projection.
 	 * @param mixed $job         Already-loaded full job.
 	 * @param mixed $credentials Narrow credential booleans.
-	 * @return bool
+	 * @return bool False only when the desired verified row is proved non-durable;
+	 *              true also covers an unreadable COMMIT outcome after exact
+	 *              staged and promoted verification.
 	 */
 	public static function write_artwork_health_snapshot( $coverage, $job, $credentials ) {
 		$now      = self::bounded_timestamp( time() );
@@ -210,7 +212,7 @@ final class Lunara_Core_Site_Studio_Bridge {
 	 * Update only the compact projection of an already-loaded owner job.
 	 *
 	 * @param mixed $job Already-loaded full job.
-	 * @return bool
+	 * @return bool False only for a proved non-publication; see the public writer.
 	 */
 	public static function update_artwork_health_job_projection( $job ) {
 		$prior_row = self::read_artwork_option_row();
@@ -595,6 +597,10 @@ final class Lunara_Core_Site_Studio_Bridge {
 			self::$artwork_status_memo = null;
 			return $autoload_ok;
 		}
+		if ( ! self::artwork_option_transactions_supported() ) {
+			self::$artwork_status_memo = null;
+			return false;
+		}
 
 		$staged_snapshot                      = $snapshot;
 		$staged_snapshot['persistence_state'] = 'unverified';
@@ -624,15 +630,47 @@ final class Lunara_Core_Site_Studio_Bridge {
 
 		$committed = self::commit_artwork_option_transaction();
 		if ( ! $committed ) {
-			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
 			self::rollback_artwork_option_transaction();
+		}
+
+		// Resolve the durable outcome after COMMIT. False means the desired
+		// verified row was proved absent; an unreadable ambiguous outcome returns
+		// true after exact pre-commit verification so a false result can never be
+		// followed by the same desired row becoming fresh in another request.
+		$durable = self::read_artwork_option_row();
+		self::clear_artwork_option_cache();
+		if ( self::row_matches( $durable, $desired, 'no', $promotion['option_id'] ) ) {
+			unset( self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] );
 			self::$artwork_status_memo = null;
+			return true;
+		}
+		if ( ! $durable['read_ok'] ) {
+			self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] = true;
+			self::$artwork_status_memo = null;
+			return true;
+		}
+
+		self::$artwork_status_memo = null;
+		return false;
+	}
+
+	/** @return bool Whether the physical options table can make promotion rollback meaningful. */
+	private static function artwork_option_transactions_supported() {
+		global $wpdb;
+		if ( ! is_object( $wpdb ) || ! isset( $wpdb->options ) || ! method_exists( $wpdb, 'prepare' ) || ! method_exists( $wpdb, 'get_row' ) ) {
 			return false;
 		}
 
-		unset( self::$artwork_uncommitted_rows[ hash( 'sha256', $desired ) ] );
-		self::$artwork_status_memo = null;
-		return true;
+		try {
+			$wpdb->last_error = '';
+			$row = $wpdb->get_row(
+				$wpdb->prepare( "SHOW TABLE STATUS WHERE Name = %s", $wpdb->options ),
+				defined( 'ARRAY_A' ) ? ARRAY_A : 'ARRAY_A'
+			);
+		} catch ( Throwable $error ) {
+			return false;
+		}
+		return empty( $wpdb->last_error ) && is_array( $row ) && isset( $row['Engine'] ) && 'innodb' === strtolower( (string) $row['Engine'] );
 	}
 
 	/** @return bool */
