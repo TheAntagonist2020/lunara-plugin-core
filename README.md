@@ -67,6 +67,42 @@ Provider image paths and structured people data are normalized for later
 stages, but `0.7.0` does not download media or create Person relationships.
 Importer code and assets are not loaded during ordinary public requests.
 
+## Theme-mod writer coordination
+
+Core `0.8.11` is the single early mutual-exclusion owner for normal-plugin
+WordPress `theme_mods_*` row writers. It exposes the redacted API-version-1
+status and opaque acquire/reuse/release lease functions; database handles,
+credentials, connection and server identity, option values, and exception text
+never enter that API. The permanent nonautoloaded row uses an InnoDB row lock,
+not an expiring value, as the authority. Oscars journals, revisions,
+reconciliation, preview, cache invalidation, and UI remain Theme-owned. This
+claim does not extend to must-use or network-plugin writers.
+
+Deploy in this order: activate/deploy Core `0.8.11` first and verify that it is
+physically first in `active_plugins`. On a fresh request, call
+`lunara_core_theme_mods_coordinator_status()` and require this exact result
+before deploying Theme `3.2.57`:
+
+```php
+array(
+	'api_version'    => 1,
+	'plugin_version' => '0.8.11',
+	'ready'          => true,
+	'reason'         => 'ready',
+	'held'           => false,
+)
+```
+
+Abort the Theme deployment if any field or value differs, if the function is
+unavailable, or if the check is not from a fresh request. Do not pair this Core
+with the intermediate Theme build that still owns the coordinator row.
+
+For a rollback, first roll Theme back to the last coordinator-free Theme build.
+Verify that the Theme-local/intermediate coordinator owner is absent, and only
+then roll Core back. Never roll Core back while Theme `3.2.57` or an
+intermediate Theme coordinator owner remains active; abort the rollback until
+that order can be guaranteed.
+
 ## Private Review Draft Importer
 
 Core `0.8.10` adds capability-aware Site Studio handoffs for the canonical
@@ -239,6 +275,7 @@ editor WordPress requests.
 ## Verification
 
 - Run `php tests/core-lifecycle-regression.php`.
+- Run `php tests/theme-mods-coordinator-regression.php`.
 - Run `php tests/debrief-contract-regression.php`.
 - Run `php tests/debrief-migration-regression.php`.
 - Run `php tests/debrief-reconciliation-regression.php`.

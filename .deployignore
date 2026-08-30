@@ -3,6 +3,8 @@
 .gitattributes
 .github
 .github/**
+.superpowers
+.superpowers/**
 .gitignore
 README.md
 docs

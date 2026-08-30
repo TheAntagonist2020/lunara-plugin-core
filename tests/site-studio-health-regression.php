@@ -6,7 +6,7 @@
  */
 
 define( 'ABSPATH', __DIR__ . '/' );
-define( 'LUNARA_CORE_VERSION', '0.8.10' );
+define( 'LUNARA_CORE_VERSION', '0.8.11' );
 
 $root          = dirname( __DIR__ );
 $bridge        = $root . '/includes/class-lunara-core-site-studio-bridge.php';
@@ -464,7 +464,7 @@ lunara_core_health_assert( function_exists( 'lunara_core_review_identity_artwork
 $generic_carousel = array(
 	'schema'         => 'lunara-core-carousel-manager-health/v1',
 	'schema_version' => 1,
-	'plugin_version' => '0.8.10',
+	'plugin_version' => '0.8.11',
 	'available'      => false,
 	'known'          => false,
 	'state'          => 'unavailable',
@@ -478,7 +478,7 @@ $generic_carousel = array(
 $generic_artwork = array(
 	'schema'         => 'lunara-core-review-identity-artwork-health/v1',
 	'schema_version' => 1,
-	'plugin_version' => '0.8.10',
+	'plugin_version' => '0.8.11',
 	'available'      => false,
 	'known'          => false,
 	'state'          => 'unavailable',
@@ -1217,8 +1217,8 @@ lunara_core_health_assert_same( $expected_carousel_surface, $contributed['core-c
 lunara_core_health_assert_same( $expected_artwork_surface, $contributed['core-review-identity-artwork'], 'Core must contribute the exact inert Review Identity & Artwork handoff.' );
 lunara_core_health_assert( isset( $contributed['core-review-studio'] ), 'The existing Review Studio contribution must remain present.' );
 
-lunara_core_health_assert( false !== strpos( $bootstrap, 'Version: 0.8.10' ), 'Core must identify release 0.8.10.' );
-lunara_core_health_assert( false !== strpos( $bootstrap, "define( 'LUNARA_CORE_VERSION', '0.8.10' );" ), 'Core runtime identity must match the 0.8.10 plugin header.' );
+lunara_core_health_assert( false !== strpos( $bootstrap, 'Version: 0.8.11' ), 'Core must identify release 0.8.11.' );
+lunara_core_health_assert( false !== strpos( $bootstrap, "define( 'LUNARA_CORE_VERSION', '0.8.11' );" ), 'Core runtime identity must match the 0.8.11 plugin header.' );
 lunara_core_health_assert( false !== strpos( $bridge_source, 'SELECT option_id, option_value, autoload' ), 'Snapshot transactions must capture the physical option-row identity and exact raw prestate.' );
 lunara_core_health_assert( false !== strpos( $bridge_source, 'BINARY option_value = BINARY %s' ), 'Snapshot CAS writes must compare raw serialized values byte-for-byte.' );
 lunara_core_health_assert( false !== strpos( $bridge_source, 'option_id = %d' ), 'Snapshot forward and rollback writes must fence the physical option-row identity.' );

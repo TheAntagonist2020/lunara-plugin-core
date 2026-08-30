@@ -14,7 +14,7 @@ function lunara_review_cpt_assert( $condition, $message ) {
 	}
 }
 
-lunara_review_cpt_assert( false !== strpos( $bootstrap, 'Version: 0.8.10' ), 'Core must identify the Site Studio health release.' );
+lunara_review_cpt_assert( false !== strpos( $bootstrap, 'Version: 0.8.11' ), 'Core must identify the theme-mod coordinator release.' );
 lunara_review_cpt_assert( (bool) preg_match( "/register_post_type\\(\\s*'review'/", $bootstrap ), 'The canonical post type key must remain singular `review`.' );
 lunara_review_cpt_assert( ! preg_match( "/register_post_type\\(\\s*'reviews'/", $bootstrap ), 'Core must never create a second plural Review post type.' );
 lunara_review_cpt_assert( (bool) preg_match( "/'menu_name'\\s*=>\\s*__\\(\\s*'Review'/", $bootstrap ), 'The WordPress menu must be singular Review.' );

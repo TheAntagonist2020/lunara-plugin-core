@@ -23,6 +23,7 @@ $GLOBALS['lunara_test_state'] = array(
 	'attachments'          => array(),
 	'post_updates'         => array(),
 	'actions'              => array(),
+	'active_plugins'       => array(),
 );
 
 function plugin_dir_path( $file ) {
@@ -31,6 +32,10 @@ function plugin_dir_path( $file ) {
 
 function plugin_dir_url() {
 	return 'https://example.test/wp-content/plugins/lunara-core/';
+}
+
+function plugin_basename( $file ) {
+	return 'lunara-core/lunara-core.php';
 }
 
 function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
@@ -67,7 +72,7 @@ function flush_rewrite_rules() {
 	++$GLOBALS['lunara_test_state']['flushes'];
 }
 
-function update_option( $name, $value ) {
+function update_option( $name, $value, $autoload = null ) {
 	$GLOBALS['lunara_test_state']['options'][ $name ] = $value;
 	return true;
 }
@@ -234,6 +239,12 @@ function lunara_test_assert_same( $expected, $actual, $message ) {
 
 require dirname( __DIR__ ) . '/lunara-core.php';
 
+lunara_test_assert_same( '0.8.11', LUNARA_CORE_VERSION, 'Core runtime identity must be locked to release 0.8.11.' );
+lunara_test_assert_same( true, function_exists( 'lunara_core_theme_mods_coordinator_status' ), 'Core must expose the redacted theme-mod coordinator status API during file inclusion.' );
+lunara_test_assert_same( true, function_exists( 'lunara_core_theme_mods_coordinator_acquire' ), 'Core must expose theme-mod lease acquisition during file inclusion.' );
+lunara_test_assert_same( true, function_exists( 'lunara_core_theme_mods_coordinator_reuse' ), 'Core must expose exact-object theme-mod lease reuse during file inclusion.' );
+lunara_test_assert_same( true, function_exists( 'lunara_core_theme_mods_coordinator_release' ), 'Core must expose theme-mod lease release during file inclusion.' );
+
 lunara_test_assert_same( true, function_exists( 'lunara_core_review_studio_admin_url' ), 'The Review Studio URL helper must be available during public bootstrap.' );
 lunara_test_assert_same( true, function_exists( 'lunara_core_review_studio_status' ), 'The redacted Review Studio status API must be available during public bootstrap.' );
 
@@ -295,6 +306,41 @@ lunara_test_assert_same(
 	false,
 	isset( $GLOBALS['lunara_test_state']['options']['lunara_core_rewrite_version'] ),
 	'Disabled entity rewrites must not be marked current.'
+);
+
+$GLOBALS['lunara_test_state']['options']['active_plugins'] = array(
+	'example-one/example-one.php',
+	'lunara-core/lunara-core.php',
+	'example-two/example-two.php',
+	'example-three/example-three.php',
+);
+lunara_test_assert_same(
+	true,
+	Lunara_Core_Theme_Mods_Coordinator::repair_active_plugins_order(),
+	'The Core lifecycle repair must verify its persisted plugin order.'
+);
+lunara_test_assert_same(
+	array(
+		'lunara-core/lunara-core.php',
+		'example-one/example-one.php',
+		'example-two/example-two.php',
+		'example-three/example-three.php',
+	),
+	$GLOBALS['lunara_test_state']['options']['active_plugins'],
+	'Ordering repair must move Core first without reordering any non-Core plugin.'
+);
+lunara_test_assert_same(
+	2,
+	count(
+		array_filter(
+			$GLOBALS['lunara_test_state']['actions'],
+			static function ( $action ) {
+				return in_array( $action[0], array( 'activated_plugin', 'deactivated_plugin' ), true )
+					&& array( 'Lunara_Core_Theme_Mods_Coordinator', 'repair_active_plugins_order' ) === $action[1];
+			}
+		)
+	),
+	'Core must repair persisted ordering after both plugin activation and deactivation lifecycle events.'
 );
 
 $GLOBALS['lunara_test_state']['entity_graph_enabled'] = true;
