@@ -56,12 +56,13 @@ jobs:
           php tests/review-draft-import-admin-regression.php
           php tests/review-workspace-regression.php
 
-      - name: Review identity and artwork contracts
+      - name: Review identity, artwork, and Site Studio contracts
         run: |
           set -e
           php tests/review-cpt-workspace-regression.php
           php tests/review-image-studio-regression.php
           php tests/review-artwork-backfill-regression.php
+          php tests/site-studio-bridge-regression.php
 
       - name: PHP syntax
         run: |

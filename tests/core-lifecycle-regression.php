@@ -234,6 +234,9 @@ function lunara_test_assert_same( $expected, $actual, $message ) {
 
 require dirname( __DIR__ ) . '/lunara-core.php';
 
+lunara_test_assert_same( true, function_exists( 'lunara_core_review_studio_admin_url' ), 'The Review Studio URL helper must be available during public bootstrap.' );
+lunara_test_assert_same( true, function_exists( 'lunara_core_review_studio_status' ), 'The redacted Review Studio status API must be available during public bootstrap.' );
+
 lunara_test_assert_same(
 	false,
 	class_exists( 'Lunara_Movie_Importer', false ),

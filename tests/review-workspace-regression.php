@@ -18,7 +18,7 @@ function lunara_review_workspace_assert( $condition, $message ) {
 	}
 }
 
-lunara_review_workspace_assert( false !== strpos( $bootstrap, 'Version: 0.8.8' ), 'Core must identify the exact-identity artwork backfill release.' );
+lunara_review_workspace_assert( false !== strpos( $bootstrap, 'Version: 0.8.9' ), 'Core must identify the Site Studio bridge release.' );
 lunara_review_workspace_assert( false !== strpos( $bootstrap, 'includes/class-lunara-review-workspace.php' ), 'Core must load the workspace only through its admin bootstrap.' );
 lunara_review_workspace_assert( false !== strpos( $bootstrap, 'Lunara_Review_Workspace::init()' ), 'Core must initialize the workspace.' );
 
