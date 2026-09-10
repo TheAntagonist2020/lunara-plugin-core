@@ -60,7 +60,7 @@ final class Lunara_Review_Artwork_Backfill {
 			<p><?php esc_html_e( 'This runner uses each Review’s canonical IMDb title ID to call the movie providers, localize the primary TMDb poster and backdrop, and reconnect automatic Review artwork. Custom and unmarked Media Library choices are never overwritten.', 'lunara-core' ); ?></p>
 
 			<?php if ( ! $credential['ready'] ) : ?>
-				<div class="notice notice-error inline"><p><?php esc_html_e( 'OMDb and TMDb credentials are not both available. The audit is safe to view, but the backfill cannot start.', 'lunara-core' ); ?></p></div>
+				<div class="notice notice-error inline"><p><?php esc_html_e( 'TMDb credentials are not available. The audit is safe to view, but the artwork backfill cannot start.', 'lunara-core' ); ?></p></div>
 			<?php endif; ?>
 
 			<table class="widefat striped" style="max-width:960px;margin:20px 0;">
@@ -276,7 +276,9 @@ final class Lunara_Review_Artwork_Backfill {
 			return array( 'omdb' => false, 'tmdb' => false, 'ready' => false );
 		}
 		$gateway = new Lunara_Movie_Provider_Gateway();
-		return $gateway->credentials_status();
+		$status = $gateway->credentials_status();
+		$status['ready'] = ! empty( $status['tmdb'] );
+		return $status;
 	}
 
 	/** @return array<string,mixed> */

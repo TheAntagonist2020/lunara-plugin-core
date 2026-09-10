@@ -14,6 +14,9 @@ class Lunara_Movie_Importer {
 }
 class Hydration_Gateway {
     public function get_candidate_by_imdb( $id ) {
+        throw new RuntimeException( 'The Review artwork worker must not require full OMDb enrichment.' );
+    }
+    public function get_artwork_by_imdb( $id ) {
         $GLOBALS['hydration']['calls'][] = $id;
         return $GLOBALS['hydration']['response'];
     }

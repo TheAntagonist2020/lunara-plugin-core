@@ -7,6 +7,20 @@
 
 	var config = window.LunaraReviewImageStudio || {};
 
+	$( document ).on( 'click', '.lunara-image-studio-retry', function ( event ) {
+		event.preventDefault();
+		var button = $( this );
+		var studio = button.closest( '.lunara-image-studio' );
+		var status = studio.find( '.lunara-image-studio-retry-status' );
+		button.prop( 'disabled', true );
+		status.text( config.retryPending );
+		$.post( config.ajaxUrl, { action: config.retryAction, review_id: studio.attr( 'data-review-id' ), nonce: button.attr( 'data-nonce' ) } )
+			.done( function ( response ) {
+				status.text( response && response.success ? config.retryQueued : config.retryFailed );
+			} ).fail( function () { status.text( config.retryFailed ); } )
+			.always( function () { button.prop( 'disabled', false ); } );
+	} );
+
 	function selectImage( card ) {
 		var frame = wp.media( {
 			title: config.title || 'Choose Review artwork',
@@ -50,4 +64,3 @@
 
 	$( '.lunara-image-studio-mode' ).trigger( 'change' );
 }( window.jQuery, window.wp ) );
-

@@ -18,6 +18,7 @@ final class Lunara_Review_Image_Studio {
 	const NONCE_ACTION = 'lunara_review_image_studio_save';
 	const NONCE_NAME   = 'lunara_review_image_studio_nonce';
 	const IMPORT_ACTION = 'lunara_review_image_import';
+	const RETRY_ACTION  = 'lunara_review_artwork_retry';
 	const MODE_PREFIX   = '_lunara_review_image_mode_';
 	const ID_PREFIX     = '_lunara_review_image_';
 	const SOURCE_META   = '_lunara_original_source_url';
@@ -49,6 +50,7 @@ final class Lunara_Review_Image_Studio {
 		add_action( 'add_meta_boxes_review', array( __CLASS__, 'add_meta_box' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 		add_action( 'admin_post_' . self::IMPORT_ACTION, array( __CLASS__, 'handle_import' ) );
+		add_action( 'wp_ajax_' . self::RETRY_ACTION, array( __CLASS__, 'handle_retry' ) );
 		add_action( 'admin_notices', array( __CLASS__, 'render_notice' ) );
 	}
 
@@ -390,8 +392,8 @@ final class Lunara_Review_Image_Studio {
 			'running' => __( 'Matching the title and importing available artwork now.', 'lunara-core' ),
 			'ready'   => __( 'Dossier, poster, and backdrop are ready.', 'lunara-core' ),
 			'partial' => __( 'The title is linked; use Custom for any artwork the movie database could not supply.', 'lunara-core' ),
-			'identity_only' => __( 'The draft Dossier is linked, but the movie database did not return artwork. Saving again after the cooldown retries safely.', 'lunara-core' ),
-			'error'   => __( 'The last lookup could not finish. Saving again will retry after the cooldown.', 'lunara-core' ),
+			'identity_only' => __( 'The draft Dossier is linked, but the movie database did not return artwork. Use Retry movie artwork to try again.', 'lunara-core' ),
+			'error'   => __( 'The last lookup could not finish. Use Retry movie artwork to try again.', 'lunara-core' ),
 		);
 		?>
 		<div class="lunara-image-studio" data-review-id="<?php echo esc_attr( $post->ID ); ?>">
@@ -414,6 +416,10 @@ final class Lunara_Review_Image_Studio {
 				<p class="lunara-image-studio-warning"><?php echo esc_html( $provider_issue ); ?></p>
 			<?php endif; ?>
 
+			<?php if ( '' !== self::normalize_imdb_id( get_post_meta( $post->ID, '_lunara_imdb_title_id', true ) ) ) : ?>
+				<p><button type="button" class="button lunara-image-studio-retry" data-nonce="<?php echo esc_attr( wp_create_nonce( self::RETRY_ACTION . ':' . $post->ID ) ); ?>"><?php esc_html_e( 'Retry movie artwork', 'lunara-core' ); ?></button> <span class="lunara-image-studio-retry-status" role="status" aria-live="polite"></span></p>
+				<p class="description"><?php esc_html_e( 'Uses the saved IMDb ID. Your article and custom image choices stay as they are.', 'lunara-core' ); ?></p>
+			<?php endif; ?>
 			<div class="lunara-image-studio-grid">
 				<?php foreach ( self::slots() as $slot => $config ) : ?>
 					<?php
@@ -565,6 +571,11 @@ final class Lunara_Review_Image_Studio {
 				'title'  => __( 'Choose Review artwork', 'lunara-core' ),
 				'button' => __( 'Use this image', 'lunara-core' ),
 				'empty'  => __( 'No image selected', 'lunara-core' ),
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'retryAction' => self::RETRY_ACTION,
+				'retryPending' => __( 'Queueing artwork lookup…', 'lunara-core' ),
+				'retryQueued' => __( 'Artwork lookup queued. Reopen this Review shortly to see the result.', 'lunara-core' ),
+				'retryFailed' => __( 'Artwork lookup could not be queued. Please try again.', 'lunara-core' ),
 			)
 		);
 	}
@@ -615,6 +626,21 @@ final class Lunara_Review_Image_Studio {
 		self::redirect_after_import( $review_id, 'success' );
 	}
 
+	/** Queue one saved Review without submitting its article editor. */
+	public static function handle_retry() {
+		$review_id = isset( $_POST['review_id'] ) && is_scalar( $_POST['review_id'] ) ? absint( $_POST['review_id'] ) : 0;
+		$nonce = isset( $_POST['nonce'] ) && is_string( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
+		if ( ! $review_id || 'review' !== get_post_type( $review_id ) || ! current_user_can( 'edit_post', $review_id ) || ! wp_verify_nonce( $nonce, self::RETRY_ACTION . ':' . $review_id ) ) {
+			wp_send_json_error( array( 'message' => __( 'This artwork request is not authorized.', 'lunara-core' ) ), 403 );
+			return;
+		}
+		if ( ! self::queue_review( $review_id, true ) ) {
+			wp_send_json_error( array( 'message' => __( 'Save a valid IMDb title ID before retrying artwork.', 'lunara-core' ) ), 400 );
+			return;
+		}
+		wp_send_json_success( array( 'queued' => true ) );
+	}
+
 	/**
 	 * Queue one identity-first background hydration after the parser/save flow.
 	 *
@@ -652,37 +678,43 @@ final class Lunara_Review_Image_Studio {
 	 * Classic Editor parsing writes the IMDb ID after WordPress saves the post.
 	 *
 	 * @param int $review_id Review ID.
+	 * @param bool $force Explicit editorial retry, bypassing completed/cooldown status.
+	 * @return bool Whether the lookup is queued or already active.
 	 */
-	public static function queue_review( $review_id ) {
+	public static function queue_review( $review_id, $force = false ) {
 		$review_id = absint( $review_id );
 		if ( ! $review_id || 'review' !== get_post_type( $review_id ) ) {
-			return;
+			return false;
 		}
 
 		$imdb_id = self::normalize_imdb_id( get_post_meta( $review_id, '_lunara_imdb_title_id', true ) );
 		if ( '' === $imdb_id ) {
-			return;
+			return false;
 		}
 
 		$hydrated = (string) get_post_meta( $review_id, self::HYDRATED_IMDB, true );
 		$status   = (string) get_post_meta( $review_id, self::HYDRATE_STATUS, true );
 		$last_run = absint( get_post_meta( $review_id, self::HYDRATE_TIME, true ) );
-		if ( $hydrated === $imdb_id && in_array( $status, array( 'ready', 'partial' ), true ) ) {
-			return;
+		if ( ! $force && $hydrated === $imdb_id && in_array( $status, array( 'ready', 'partial' ), true ) ) {
+			return false;
 		}
-		if ( in_array( $status, array( 'error', 'identity_only' ), true ) && $last_run > time() - HOUR_IN_SECONDS ) {
-			return;
+		if ( ! $force && in_array( $status, array( 'error', 'identity_only' ), true ) && $last_run > time() - HOUR_IN_SECONDS ) {
+			return false;
+		}
+		if ( 'running' === $status && $last_run > time() - 300 ) {
+			return true;
 		}
 
 		$args = array( $review_id, $imdb_id );
 		if ( function_exists( 'wp_next_scheduled' ) && wp_next_scheduled( self::HYDRATE_HOOK, $args ) ) {
-			return;
+			return true;
 		}
 
-		update_post_meta( $review_id, self::HYDRATE_STATUS, 'queued' );
-		if ( function_exists( 'wp_schedule_single_event' ) ) {
-			wp_schedule_single_event( time() + 1, self::HYDRATE_HOOK, $args );
+		if ( function_exists( 'wp_schedule_single_event' ) && wp_schedule_single_event( time() + 1, self::HYDRATE_HOOK, $args ) ) {
+			update_post_meta( $review_id, self::HYDRATE_STATUS, 'queued' );
+			return true;
 		}
+		return false;
 	}
 
 	/**
@@ -738,8 +770,9 @@ final class Lunara_Review_Image_Studio {
 
 			$candidate          = array();
 			$provider_succeeded = false;
-			if ( is_object( $gateway ) && method_exists( $gateway, 'get_candidate_by_imdb' ) ) {
-				$response = $gateway->get_candidate_by_imdb( $imdb_id );
+			$lookup = is_object( $gateway ) && method_exists( $gateway, 'get_artwork_by_imdb' ) ? 'get_artwork_by_imdb' : 'get_candidate_by_imdb';
+			if ( is_object( $gateway ) && method_exists( $gateway, $lookup ) ) {
+				$response = $gateway->$lookup( $imdb_id );
 				if ( ! is_wp_error( $response ) ) {
 					$candidate = isset( $response['candidate'] ) && is_array( $response['candidate'] ) ? $response['candidate'] : $response;
 					$provider_succeeded = is_array( $candidate ) && ! empty( $candidate );
