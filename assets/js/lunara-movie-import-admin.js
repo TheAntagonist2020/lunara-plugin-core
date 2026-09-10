@@ -281,6 +281,13 @@
         var open = event.target.closest('[data-lunara-movie-import-open]');
         var close = event.target.closest('[data-lunara-movie-import-close]');
         var importButton = event.target.closest('[data-lunara-movie-import-draft]');
+        var lookupButton = event.target.closest('[data-lunara-movie-lookup]');
+
+        if (lookupButton) {
+            event.preventDefault();
+            lookupFilm(lookupButton.closest('[data-lunara-movie-lookup-form]'));
+            return;
+        }
 
         if (open) {
             var launcher = open.closest('[data-lunara-movie-import-launcher]');
@@ -345,19 +352,34 @@
         }
     });
 
-    document.addEventListener('submit', function (event) {
-        var form = event.target.closest('[data-lunara-movie-lookup-form]');
-        if (!form) {
+    document.addEventListener('keydown', function (event) {
+        var input = event.target.closest('[data-lunara-imdb-input]');
+        if (!input || event.key !== 'Enter' || event.isComposing) {
             return;
         }
         event.preventDefault();
+        lookupFilm(input.closest('[data-lunara-movie-lookup-form]'));
+    });
 
+    function lookupFilm(form) {
+        if (!form) {
+            return;
+        }
         var launcher = form.closest('[data-lunara-movie-import-launcher]');
+        var dialog = select(launcher, '[data-lunara-movie-import-dialog]');
+        if (!launcher || (dialog && dialog.getAttribute('aria-busy') === 'true')) {
+            return;
+        }
         var input = select(form, '[data-lunara-imdb-input]');
         var imdbId = normalizedImdb(input ? input.value : '');
         var result = select(launcher, '[data-lunara-movie-import-result]');
         var importButton = select(launcher, '[data-lunara-movie-import-draft]');
 
+        if (result) {
+            result.hidden = true;
+            result.removeAttribute('data-imdb-id');
+        }
+        setStatus(launcher, '');
         if (!imdbId) {
             setAlert(launcher, (config.strings && config.strings.invalidImdb) || 'Enter a valid IMDb title ID.');
             if (input) {
@@ -366,9 +388,6 @@
             return;
         }
 
-        if (result) {
-            result.hidden = true;
-        }
         if (importButton) {
             importButton.hidden = false;
         }
@@ -399,7 +418,7 @@
                 input.focus();
             }
         });
-    });
+    }
 
     document.addEventListener('close', function (event) {
         if (!event.target.matches('[data-lunara-movie-import-dialog]')) {

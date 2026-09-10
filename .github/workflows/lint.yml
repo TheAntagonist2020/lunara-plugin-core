@@ -61,6 +61,8 @@ jobs:
           set -e
           php tests/review-cpt-workspace-regression.php
           php tests/review-image-studio-regression.php
+          php tests/review-artwork-queue-regression.php
+          php tests/review-artwork-hydration-regression.php
           php tests/review-artwork-backfill-regression.php
           php tests/site-studio-bridge-regression.php
 

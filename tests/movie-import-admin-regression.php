@@ -365,6 +365,12 @@ $_GET = array( 'post' => 99 );
 ob_start();
 Lunara_Movie_Import_Admin::render_field_launcher( array( 'key' => 'field_lunara_review_theme_echo_movie' ) );
 $launcher_html = ob_get_clean();
+if ( defined( 'LUNARA_MOVIE_IMPORT_RENDER_ONLY' ) ) {
+    echo $launcher_html;
+    return;
+}
+lunara_import_admin_assert_true( false === strpos( $launcher_html, '<form' ), 'The lookup dialog must not nest a form inside the Classic Review form.' );
+lunara_import_admin_assert_true( false === strpos( $launcher_html, 'type="submit"' ), 'Lookup must never submit the parent Review form.' );
 lunara_import_admin_assert_true( false !== strpos( $launcher_html, 'Local library first' ), 'The launcher must instruct editors to use local Movie records first.' );
 lunara_import_admin_assert_true( false !== strpos( $launcher_html, 'data-role="theme_echo"' ), 'The launcher must preserve its exact Debrief role.' );
 lunara_import_admin_assert_true( false !== strpos( $launcher_html, 'data-state="local-first"' ), 'Every launcher must begin in the local-first state.' );
