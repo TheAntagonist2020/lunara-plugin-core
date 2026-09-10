@@ -208,6 +208,69 @@ final class Lunara_Movie_Provider_Gateway {
     }
 
     /**
+     * Retrieve exact-identity Review artwork independently of OMDb enrichment.
+     * A separate cache prevents partial metadata from entering the full importer.
+     *
+     * @param mixed $imdb_id Canonical IMDb title identifier.
+     * @return array<string,mixed>|WP_Error
+     */
+    public function get_artwork_by_imdb( $imdb_id ) {
+        $imdb_id = self::normalize_imdb_id( $imdb_id );
+        if ( '' === $imdb_id ) {
+            return self::error( 'lunara_movie_invalid_imdb_id', 'Enter a valid IMDb title identifier.' );
+        }
+
+        $cache_key = 'lunara_movie_artwork_v1_' . hash( 'sha256', $imdb_id );
+        $cached    = $this->read_cache( $cache_key );
+        if ( self::is_valid_cached_candidate( $cached, $imdb_id ) ) {
+            return $cached;
+        }
+
+        $tmdb_token = self::credential( 'LUNARA_TMDB_API_TOKEN' );
+        if ( '' === $tmdb_token ) {
+            return self::error( 'lunara_movie_provider_credentials_missing', 'The movie artwork provider is not configured.', 'tmdb' );
+        }
+        $tmdb_args = self::request_args( array( 'Authorization' => 'Bearer ' . $tmdb_token ) );
+        $tmdb_token = '';
+        $find = $this->request_json(
+            'tmdb',
+            self::build_url( 'https://api.themoviedb.org/3/find/' . rawurlencode( $imdb_id ), array( 'external_source' => 'imdb_id', 'language' => 'en-US' ) ),
+            $tmdb_args
+        );
+        if ( self::is_error_value( $find ) ) {
+            return $find;
+        }
+        $tmdb_id = self::first_tmdb_movie_id( $find['data'] );
+        if ( ! $tmdb_id ) {
+            $this->record_success( 'tmdb' );
+            return self::error( 'lunara_movie_provider_not_found', 'No matching movie was found.', 'tmdb' );
+        }
+        $details = $this->request_json(
+            'tmdb',
+            self::build_url( 'https://api.themoviedb.org/3/movie/' . $tmdb_id, array( 'append_to_response' => 'credits,external_ids', 'language' => 'en-US' ) ),
+            $tmdb_args
+        );
+        if ( self::is_error_value( $details ) ) {
+            return $details;
+        }
+        $identity = self::normalize_imdb_id( isset( $details['data']['external_ids']['imdb_id'] ) ? $details['data']['external_ids']['imdb_id'] : '' );
+        $details_id = isset( $details['data']['id'] ) ? self::positive_integer( $details['data']['id'] ) : 0;
+        if ( $imdb_id !== $identity || $tmdb_id !== $details_id ) {
+            $this->record_failure( 'tmdb' );
+            return self::error( 'lunara_movie_provider_identity_mismatch', 'The metadata provider returned a different film identity.', 'tmdb' );
+        }
+        $candidate = self::normalize_candidate( $imdb_id, array(), $find, $details, $tmdb_id );
+        if ( '' === $candidate['title'] ) {
+            return self::error( 'lunara_movie_provider_invalid_response', 'The metadata provider response was incomplete.', 'tmdb' );
+        }
+        $candidate['provider_status']['omdb'] = false;
+        $candidate['candidate_hash'] = hash( 'sha256', self::stable_json( $candidate ) );
+        $this->record_success( 'tmdb' );
+        $this->write_cache( $cache_key, $candidate, self::CACHE_TTL );
+        return $candidate;
+    }
+
+    /**
      * WordPress production transport.
      *
      * @param string              $url Request URL.

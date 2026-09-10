@@ -6,7 +6,7 @@
  */
 
 define( 'ABSPATH', __DIR__ . '/' );
-define( 'LUNARA_CORE_VERSION', '0.8.10' );
+define( 'LUNARA_CORE_VERSION', '0.8.11' );
 
 $root      = dirname( __DIR__ );
 $bridge    = $root . '/includes/class-lunara-core-site-studio-bridge.php';
@@ -103,8 +103,8 @@ function lunara_core_bridge_assert_same( $expected, $actual, $message ) {
 }
 
 lunara_core_bridge_assert( file_exists( $bridge ), 'Core must ship the always-loaded Site Studio bridge module.' );
-lunara_core_bridge_assert( false !== strpos( $bootstrap, 'Version: 0.8.10' ), 'Core must identify the review poster source release as 0.8.10.' );
-lunara_core_bridge_assert( false !== strpos( $bootstrap, "define( 'LUNARA_CORE_VERSION', '0.8.10' );" ), 'Core runtime identity must match the 0.8.10 plugin header.' );
+lunara_core_bridge_assert( false !== strpos( $bootstrap, 'Version: 0.8.11' ), 'Core must identify the review poster source release as 0.8.11.' );
+lunara_core_bridge_assert( false !== strpos( $bootstrap, "define( 'LUNARA_CORE_VERSION', '0.8.11' );" ), 'Core runtime identity must match the 0.8.11 plugin header.' );
 lunara_core_bridge_assert( false !== strpos( $bootstrap, "includes/class-lunara-core-site-studio-bridge.php" ), 'Core must require the bridge outside its admin-only bootstrap.' );
 lunara_core_bridge_assert( false !== strpos( $bootstrap, 'Lunara_Core_Site_Studio_Bridge::init();' ), 'Core must register its inert Site Studio filter during every normal bootstrap.' );
 lunara_core_bridge_assert( false !== strpos( $workflow, 'php tests/site-studio-bridge-regression.php' ), 'CI must run the Site Studio bridge contract.' );
@@ -168,7 +168,7 @@ lunara_core_bridge_assert( $fallback === lunara_core_review_studio_admin_url( 21
 lunara_core_bridge_assert( function_exists( 'lunara_core_review_studio_status' ), 'Core must expose a stable redacted Review Studio status API.' );
 $expected_unavailable = array(
 	'available' => false,
-	'version'   => '0.8.10',
+	'version'   => '0.8.11',
 	'cpt'       => array(
 		'key'        => 'review',
 		'registered' => false,
@@ -274,7 +274,7 @@ lunara_core_bridge_assert_same(
 	array(
 		'state'        => 'ready',
 		'label'        => 'Review Studio available',
-		'message'      => 'Lunara Core 0.8.10 provides the canonical Review editor.',
+		'message'      => 'Lunara Core 0.8.11 provides the canonical Review editor.',
 		'action_label' => 'Open Review Studio',
 		'url'          => $fallback,
 	),

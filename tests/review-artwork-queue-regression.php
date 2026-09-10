@@ -6,7 +6,15 @@ $GLOBALS['artwork_queue'] = array( 'hooks' => array(), 'meta' => array(), 'event
 function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
     $GLOBALS['artwork_queue']['hooks'][ $hook ][] = array( $callback, $accepted_args );
 }
-function is_admin() { return false; }
+function is_admin() { return true; }
+function __( $text, $domain = '' ) { return $text; }
+function sanitize_text_field( $text ) { return trim( $text ); }
+function wp_unslash( $text ) { return $text; }
+function current_user_can( $capability, $id = 0 ) { return empty( $GLOBALS['artwork_queue']['deny'] ); }
+function wp_verify_nonce( $nonce, $action ) { return 'nonce:' . $action === $nonce; }
+function wp_send_json_error( $data, $status = 400 ) { $GLOBALS['artwork_queue']['response'] = array( false, $status ); }
+function wp_send_json_success( $data ) { $GLOBALS['artwork_queue']['response'] = array( true, 200 ); }
+function wp_update_post() { throw new RuntimeException( 'Artwork retry must never save the article.' ); }
 function absint( $value ) { return abs( (int) $value ); }
 function get_post_type( $id ) { return 99 === $id ? 'journal' : 'review'; }
 function get_post_meta( $id, $key, $single = true ) { return $GLOBALS['artwork_queue']['meta'][ $id ][ $key ] ?? ''; }
@@ -46,4 +54,25 @@ $stale = Lunara_Review_Image_Studio::hydrate_review_identity( 10, 'tt21285562' )
 queue_assert( 'stale_identity' === $stale['status'], 'A queued job for an old identity must stop before fetching or writing artwork.' );
 queue_assert( $before === $GLOBALS['artwork_queue']['meta'], 'An obsolete artwork job must leave the current Review untouched.' );
 
+$GLOBALS['artwork_queue']['meta'][12] = array( '_lunara_imdb_title_id' => 'tt21285562', Lunara_Review_Image_Studio::HYDRATE_STATUS => 'identity_only', Lunara_Review_Image_Studio::HYDRATE_TIME => time() );
+queue_assert( ! Lunara_Review_Image_Studio::queue_review( 12 ), 'Automatic retries must respect cooldown.' );
+$_POST = array( 'review_id' => 12, 'nonce' => 'invalid' );
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 403 ) === $GLOBALS['artwork_queue']['response'] && ! queued( 12, 'tt21285562' ), 'An invalid nonce must not queue artwork.' );
+$_POST['nonce'] = 'nonce:' . Lunara_Review_Image_Studio::RETRY_ACTION . ':12';
+$GLOBALS['artwork_queue']['deny'] = true;
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 403 ) === $GLOBALS['artwork_queue']['response'] && ! queued( 12, 'tt21285562' ), 'Another user cannot retry a Review they cannot edit.' );
+$GLOBALS['artwork_queue']['deny'] = false;
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( true, 200 ) === $GLOBALS['artwork_queue']['response'] && queued( 12, 'tt21285562' ), 'An authorized explicit retry must bypass old failure cooldown.' );
+$count = count( $GLOBALS['artwork_queue']['events'] );
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( $count === count( $GLOBALS['artwork_queue']['events'] ), 'Repeated clicks must not duplicate queued jobs.' );
+$_POST = array( 'review_id' => 11, 'nonce' => 'nonce:' . Lunara_Review_Image_Studio::RETRY_ACTION . ':11' );
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 400 ) === $GLOBALS['artwork_queue']['response'], 'Invalid saved identities cannot be retried.' );
+$GLOBALS['artwork_queue']['meta'][13] = array( '_lunara_imdb_title_id' => 'tt21285562', Lunara_Review_Image_Studio::HYDRATE_STATUS => 'running', Lunara_Review_Image_Studio::HYDRATE_TIME => time() );
+queue_assert( Lunara_Review_Image_Studio::queue_review( 13, true ) && $count === count( $GLOBALS['artwork_queue']['events'] ), 'A running worker must not be restarted by a click.' );
+queue_assert( isset( $GLOBALS['artwork_queue']['hooks']['wp_ajax_' . Lunara_Review_Image_Studio::RETRY_ACTION] ), 'Authenticated artwork retry handler must be registered.' );
 echo "Review artwork queue regression checks passed.\n";

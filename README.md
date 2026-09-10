@@ -10,6 +10,15 @@ Do not deactivate it on the live site without first auditing theme/plugin depend
 
 ## Review Editorial Fields
 
+Review artwork uses a direct TMDB lookup by the saved canonical IMDb ID and
+requires an exact identity match before saving `_lunara_tmdb_poster_url` and
+`_lunara_tmdb_backdrop_url`. OMDb enrichment remains part of the full Movie
+importer, but an OMDb outage no longer blocks artwork. The artwork cache is
+separate from full metadata candidates. Review Image Studio offers **Retry
+movie artwork**, which queues one saved Review without submitting the article
+editor. Automatic retries keep their cooldown; explicit retries deduplicate
+active work. Custom artwork remains protected.
+
 - `Review Spoiler Mode` marks a Review as either spoiler-free or a full-spoiler companion.
 - `Full Spoiler Review URL` and `Spoiler Link Label` bridge spoiler-free reviews to companion pieces when manual linking is preferred.
 - `IMDb Title ID` lets the active theme auto-pair published full-spoiler companions with spoiler-free reviews that share the same film identity.

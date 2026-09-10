@@ -278,7 +278,38 @@ $invalid_json = $invalid_json_gateway->get_candidate_by_imdb( 'tt0111161' );
 lunara_provider_assert_true( is_wp_error( $invalid_json ), 'Invalid provider JSON must fail closed.' );
 lunara_provider_assert_same( 'lunara_movie_provider_invalid_response', $invalid_json->get_error_code(), 'Invalid JSON must return the stable redacted error code.' );
 
+// Artwork must not depend on OMDb's credentials, availability or cache.
+lunara_provider_assert_true( method_exists( $gateway, 'get_artwork_by_imdb' ), 'Review artwork needs a direct TMDB lookup independent of OMDb.' );
 putenv( 'LUNARA_OMDB_API_KEY' );
+$art_calls = array();
+$art_cache = array();
+$art_transport = static function ( $url, $args ) use ( $transport, &$art_calls ) {
+    $art_calls[] = $url;
+    lunara_provider_assert_same( 'api.themoviedb.org', parse_url( $url, PHP_URL_HOST ), 'Artwork lookup must never request OMDb.' );
+    return $transport( $url, $args );
+};
+$art_gateway = new Lunara_Movie_Provider_Gateway( $art_transport, static function ( $key ) use ( &$art_cache ) { return $art_cache[$key] ?? false; }, static function ( $key, $value ) use ( &$art_cache ) { $art_cache[$key] = $value; }, static function () { return 3000.0; } );
+$art = $art_gateway->get_artwork_by_imdb( 'tt15239678' );
+lunara_provider_assert_true( is_array( $art ), 'TMDB artwork must resolve while OMDb is unconfigured.' );
+lunara_provider_assert_same( $candidate['poster_path'], $art['poster_path'], 'The exact-IMDb TMDB poster must survive independent artwork lookup.' );
+lunara_provider_assert_same( array( 'omdb' => false, 'tmdb' => true ), $art['provider_status'], 'Artwork provenance must not falsely claim OMDb was queried.' );
+lunara_provider_assert_same( 2, count( $art_calls ), 'Artwork lookup must use only TMDB find and details.' );
+$art_gateway->get_artwork_by_imdb( 'tt15239678' );
+lunara_provider_assert_same( 2, count( $art_calls ), 'A repeated artwork lookup must use its own cache.' );
+lunara_provider_assert_true( ! str_contains( json_encode( $art_cache ), 'provider-test-tmdb-secret' ), 'Artwork caches must not contain credentials.' );
+foreach ( array( 'tt0111161', '' ) as $wrong_identity ) {
+    $wrong_gateway = new Lunara_Movie_Provider_Gateway( static function ( $url, $args ) use ( $transport, $wrong_identity ) {
+        $response = $transport( $url, $args );
+        if ( str_contains( $url, '/movie/' ) ) {
+            $data = json_decode( $response['body'], true );
+            $data['external_ids']['imdb_id'] = $wrong_identity;
+            return lunara_provider_response( $data );
+        }
+        return $response;
+    }, static function () { return false; }, static function () {}, static function () { return 4000.0; } );
+    $wrong = $wrong_gateway->get_artwork_by_imdb( 'tt15239678' );
+    lunara_provider_assert_true( is_wp_error( $wrong ), 'A missing or conflicting TMDB IMDb identity must not supply Review artwork.' );
+}
 putenv( 'LUNARA_TMDB_API_TOKEN' );
 
 echo "Movie importer provider regression checks passed.\n";
