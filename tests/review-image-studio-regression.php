@@ -116,6 +116,30 @@ $GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_mode_hero
 $off = Lunara_Review_Image_Studio::resolve_slot( 10, 'hero_banner' );
 lunara_image_studio_assert_same( '', $off['url'], 'Off must suppress the hero even when the Film Dossier has a backdrop.' );
 
+$poster_url = 'https://image.tmdb.org/t/p/original/current-poster.jpg';
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_tmdb_poster_url'] = $poster_url;
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_mode_card'] = 'auto';
+$provider = Lunara_Review_Image_Studio::resolve_slot( 10, 'card' );
+lunara_image_studio_assert_same( $poster_url, $provider['url'], 'Automatic cards must prefer the canonical TMDB poster over old local, dossier, and featured artwork.' );
+lunara_image_studio_assert_same( 'review_provider', $provider['source'], 'The editor must identify the canonical provider source.' );
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_mode_card'] = 'custom';
+lunara_image_studio_assert_same( 204, Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['attachment_id'], 'A canonical poster must never replace explicit custom art.' );
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_mode_card'] = 'off';
+lunara_image_studio_assert_same( '', Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['url'], 'A canonical poster must never override Off.' );
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_mode_card'] = 'auto';
+foreach ( array( '', array( 'malformed' ), 'javascript:alert(1)', 'https://' ) as $invalid_url ) {
+	$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_tmdb_poster_url'] = $invalid_url;
+	lunara_image_studio_assert_same( 204, Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['attachment_id'], 'Missing or malformed provider metadata must fall back to usable artwork.' );
+}
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_tmdb_poster_url'] = '';
+$GLOBALS['lunara_image_studio_test']['meta'][10]['_lunara_review_image_card_id'] = 999;
+lunara_image_studio_assert_same( 201, Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['attachment_id'], 'A deleted automatic attachment must not block the next usable source.' );
+$GLOBALS['lunara_image_studio_test']['thumbnails'][20] = 999;
+lunara_image_studio_assert_same( 203, Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['attachment_id'], 'A deleted dossier poster must fall through to the review featured image.' );
+$GLOBALS['lunara_image_studio_test']['thumbnails'][10] = 999;
+$GLOBALS['lunara_image_studio_test']['meta'][20]['tmdb_poster_url'] = $poster_url;
+lunara_image_studio_assert_same( $poster_url, Lunara_Review_Image_Studio::resolve_slot( 10, 'card' )['url'], 'Deleted attachments must not hide the dossier provider URL.' );
+
 Lunara_Review_Image_Studio::register_meta();
 lunara_image_studio_assert_same( 10, count( $GLOBALS['lunara_image_studio_test']['registered_meta']['review'] ), 'Five slots must expose both mode and attachment ID through registered Review meta.' );
 
@@ -123,7 +147,7 @@ $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $studio    = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-image-studio.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-image-studio.js' );
 $importer  = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
-lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Version: 0.8.9' ), 'Core must identify the Site Studio bridge release.' );
+lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Version: 0.8.10' ), 'Core must identify the review poster source release.' );
 lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Lunara_Review_Image_Studio::init()' ), 'Core must initialize the Review Image Studio.' );
 lunara_image_studio_assert_true( false !== strpos( $studio, 'media_sideload_image' ), 'Remote provider artwork must be localizable into the Media Library.' );
 lunara_image_studio_assert_true( false !== strpos( $studio, 'set_post_thumbnail' ), 'Review and Film Dossier poster synchronization must remain explicit and supported.' );

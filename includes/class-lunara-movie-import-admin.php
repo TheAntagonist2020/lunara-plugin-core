@@ -158,13 +158,15 @@ final class Lunara_Movie_Import_Admin {
         echo '</div>';
         echo '<div class="lunara-movie-import-dialog-body">';
         echo '<p>' . esc_html__( 'Use the canonical IMDb title ID. Provider credentials and remote URLs never enter this form.', 'lunara-core' ) . '</p>';
-        echo '<form data-lunara-movie-lookup-form novalidate>';
+        // A Review already has a parent form. Nesting another silently submits
+        // that Review in browsers. Keep lookup controls outside form ownership.
+        echo '<div data-lunara-movie-lookup-form>';
         echo '<label for="' . esc_attr( $dialog_id . '-imdb' ) . '">' . esc_html__( 'IMDb title ID', 'lunara-core' ) . '</label>';
         echo '<div class="lunara-movie-import-query">';
-        echo '<input id="' . esc_attr( $dialog_id . '-imdb' ) . '" name="imdb_id" type="text" inputmode="text" autocomplete="off" spellcheck="false" pattern="tt[0-9]{6,9}" placeholder="tt0068646" value="' . esc_attr( $expected['imdb_title_id'] ) . '" required data-lunara-imdb-input>';
-        echo '<button type="submit" class="button button-primary">' . esc_html__( 'Look up film', 'lunara-core' ) . '</button>';
+        echo '<input id="' . esc_attr( $dialog_id . '-imdb' ) . '" form="' . esc_attr( $dialog_id . '-detached' ) . '" type="text" inputmode="text" autocomplete="off" spellcheck="false" pattern="tt[0-9]{6,9}" placeholder="tt0068646" value="' . esc_attr( $expected['imdb_title_id'] ) . '" required data-lunara-imdb-input>';
+        echo '<button type="button" class="button button-primary" data-lunara-movie-lookup>' . esc_html__( 'Look up film', 'lunara-core' ) . '</button>';
         echo '</div>';
-        echo '</form>';
+        echo '</div>';
         echo '<p class="lunara-movie-import-status" role="status" aria-live="polite" aria-atomic="true" data-lunara-movie-import-status></p>';
         echo '<p class="lunara-movie-import-alert" role="alert" aria-live="assertive" aria-atomic="true" hidden data-lunara-movie-import-alert></p>';
         echo '<section class="lunara-movie-import-result" hidden data-lunara-movie-import-result aria-label="' . esc_attr__( 'Remote film result', 'lunara-core' ) . '">';

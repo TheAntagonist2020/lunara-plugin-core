@@ -69,6 +69,25 @@ Importer code and assets are not loaded during ordinary public requests.
 
 ## Private Review Draft Importer
 
+Core `0.8.10` makes `_lunara_tmdb_poster_url` the preferred Review card source
+in Automatic mode, with usable local and Film Dossier artwork as fallbacks.
+Custom and Off choices retain their meaning. Deleted attachment pointers no
+longer block a later usable source. The existing theme consumes this resolver
+for Review cards and homepage Review artwork; no theme release is required.
+
+Adding or changing the canonical IMDb meta after the post-save hook now queues
+artwork retrieval, including REST-created Reviews. Old queued identities are
+rejected before provider work. Provider failures leave a fixed, redacted
+explanation in Review Image Studio instead of silently hiding their cause.
+This release does not automatically retry the existing review library;
+previously missing artwork still needs an explicit retrieval after deployment.
+
+The Debrief Movie lookup dialog no longer nests a form inside the Classic
+Review form. Click and Enter perform only lookup, while an unavailable editor
+script cannot accidentally submit the Review. The local browser fixture is
+`tests/fixtures/movie-import-lookup.php`, served with `php -S 127.0.0.1:8774`.
+Its counters and mocked provider never contact production.
+
 Core `0.8.9` adds an always-loaded, read-only bridge for Lunara Site Studio.
 `lunara_core_review_studio_admin_url()` opens the Review Library, a new Review,
 or an individually authorized Review workspace while returning the same safe

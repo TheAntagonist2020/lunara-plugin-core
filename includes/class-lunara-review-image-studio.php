@@ -25,6 +25,7 @@ final class Lunara_Review_Image_Studio {
 	const HYDRATE_STATUS = '_lunara_review_image_hydration_status';
 	const HYDRATED_IMDB  = '_lunara_review_image_hydrated_imdb';
 	const HYDRATE_TIME    = '_lunara_review_image_hydration_time';
+	const PROVIDER_ISSUE  = '_lunara_review_image_provider_issue';
 
 	/** @var array<int,int> Per-request Review-to-Movie lookup cache. */
 	private static $movie_cache = array();
@@ -36,6 +37,8 @@ final class Lunara_Review_Image_Studio {
 		add_action( 'init', array( __CLASS__, 'register_meta' ), 30 );
 		add_action( 'save_post_review', array( __CLASS__, 'save' ), 25, 3 );
 		add_action( 'save_post_review', array( __CLASS__, 'queue_identity_hydration' ), 60, 3 );
+		add_action( 'added_post_meta', array( __CLASS__, 'queue_identity_meta' ), 10, 4 );
+		add_action( 'updated_post_meta', array( __CLASS__, 'queue_identity_meta' ), 10, 4 );
 		add_action( 'transition_post_status', array( __CLASS__, 'sync_auto_grown_dossier' ), 20, 3 );
 		add_action( self::HYDRATE_HOOK, array( __CLASS__, 'hydrate_review_identity' ), 10, 2 );
 
@@ -223,29 +226,49 @@ final class Lunara_Review_Image_Studio {
 
 		$movie_id = self::resolve_movie_id( $review_id );
 		$role     = $slots[ $slot ]['auto_role'];
+		// A saved canonical poster is the editorial source of truth in Auto.
+		// Custom and Off are resolved above and never reach this preference.
+		if ( 'poster' === $role ) {
+			$url = self::provider_meta_url( $review_id, '_lunara_tmdb_poster_url' );
+			if ( '' !== $url ) {
+				return self::url_source( $url, 'review_provider', 'auto', $movie_id );
+			}
+		}
 		$review_attachment_id = absint( get_post_meta( $review_id, self::ID_PREFIX . $slot . '_id', true ) );
 		if ( $review_attachment_id ) {
-			return self::attachment_source( $review_attachment_id, 'review_local_auto', 'auto', $movie_id );
+			$source = self::attachment_source( $review_attachment_id, 'review_local_auto', 'auto', $movie_id );
+			if ( '' !== $source['url'] ) {
+				return $source;
+			}
 		}
 
 		if ( $movie_id && 'poster' === $role ) {
 			$attachment_id = get_post_thumbnail_id( $movie_id );
 			if ( $attachment_id ) {
-				return self::attachment_source( $attachment_id, 'dossier_poster', 'auto', $movie_id );
+				$source = self::attachment_source( $attachment_id, 'dossier_poster', 'auto', $movie_id );
+				if ( '' !== $source['url'] ) {
+					return $source;
+				}
 			}
 		}
 
 		if ( $movie_id && 'backdrop' === $role ) {
 			$attachment_id = absint( get_post_meta( $movie_id, 'backdrop_image', true ) );
 			if ( $attachment_id ) {
-				return self::attachment_source( $attachment_id, 'dossier_backdrop', 'auto', $movie_id );
+				$source = self::attachment_source( $attachment_id, 'dossier_backdrop', 'auto', $movie_id );
+				if ( '' !== $source['url'] ) {
+					return $source;
+				}
 			}
 		}
 
 		if ( 'poster' === $role ) {
 			$attachment_id = get_post_thumbnail_id( $review_id );
 			if ( $attachment_id ) {
-				return self::attachment_source( $attachment_id, 'review_featured', 'auto', $movie_id );
+				$source = self::attachment_source( $attachment_id, 'review_featured', 'auto', $movie_id );
+				if ( '' !== $source['url'] ) {
+					return $source;
+				}
 			}
 		}
 
@@ -253,7 +276,7 @@ final class Lunara_Review_Image_Studio {
 			? array( '_lunara_tmdb_poster_url', 'tmdb_poster_url' )
 			: array( '_lunara_tmdb_backdrop_url', 'tmdb_backdrop_url' );
 		foreach ( $review_keys as $meta_key ) {
-			$url = trim( (string) get_post_meta( $review_id, $meta_key, true ) );
+			$url = self::provider_meta_url( $review_id, $meta_key );
 			if ( '' !== $url ) {
 				return self::url_source( $url, 'review_provider', 'auto', $movie_id );
 			}
@@ -264,7 +287,7 @@ final class Lunara_Review_Image_Studio {
 				? array( 'tmdb_poster_url', '_lunara_tmdb_poster_url' )
 				: array( 'tmdb_backdrop_url', '_lunara_tmdb_backdrop_url' );
 			foreach ( $movie_keys as $meta_key ) {
-				$url = trim( (string) get_post_meta( $movie_id, $meta_key, true ) );
+				$url = self::provider_meta_url( $movie_id, $meta_key );
 				if ( '' !== $url ) {
 					return self::url_source( $url, 'dossier_provider', 'auto', $movie_id );
 				}
@@ -272,6 +295,18 @@ final class Lunara_Review_Image_Studio {
 		}
 
 		return self::empty_source( 'auto', $movie_id );
+	}
+
+	/** Read a usable web image URL without letting malformed meta block fallback. */
+	private static function provider_meta_url( $post_id, $key ) {
+		$value = get_post_meta( $post_id, $key, true );
+		if ( ! is_string( $value ) ) {
+			return '';
+		}
+		$url = esc_url_raw( trim( $value ) );
+		$parts = parse_url( $url );
+		return is_array( $parts ) && ! empty( $parts['host'] ) && isset( $parts['scheme'] )
+			&& in_array( strtolower( $parts['scheme'] ), array( 'https', 'http' ), true ) ? $url : '';
 	}
 
 	/**
@@ -361,7 +396,7 @@ final class Lunara_Review_Image_Studio {
 		?>
 		<div class="lunara-image-studio" data-review-id="<?php echo esc_attr( $post->ID ); ?>">
 			<p class="lunara-image-studio-intro">
-				<?php esc_html_e( 'Each position can inherit Film Dossier artwork, use a Review-specific Media Library image, or be switched off completely. Nothing is overwritten unless you explicitly request it.', 'lunara-core' ); ?>
+				<?php esc_html_e( 'Automatic cards prefer this Review\'s saved TMDB poster, then available local or Film Dossier artwork. Choose Custom to keep your own image, or Off to hide a position.', 'lunara-core' ); ?>
 			</p>
 			<?php if ( $movie_id ) : ?>
 				<p class="lunara-image-studio-link">
@@ -373,6 +408,10 @@ final class Lunara_Review_Image_Studio {
 			<?php endif; ?>
 			<?php if ( '' !== $hydrate_status ) : ?>
 				<p class="lunara-image-studio-status"><strong><?php esc_html_e( 'Movie database:', 'lunara-core' ); ?></strong> <?php echo esc_html( isset( $status_labels[ $hydrate_status ] ) ? $status_labels[ $hydrate_status ] : ucfirst( $hydrate_status ) ); ?></p>
+			<?php endif; ?>
+			<?php $provider_issue = get_post_meta( $post->ID, self::PROVIDER_ISSUE, true ); ?>
+			<?php if ( is_string( $provider_issue ) && '' !== $provider_issue ) : ?>
+				<p class="lunara-image-studio-warning"><?php echo esc_html( $provider_issue ); ?></p>
 			<?php endif; ?>
 
 			<div class="lunara-image-studio-grid">
@@ -598,6 +637,14 @@ final class Lunara_Review_Image_Studio {
 		self::queue_review( $review_id );
 	}
 
+	/** Queue when REST/importers write the canonical ID after save_post_review. */
+	public static function queue_identity_meta( $meta_id, $review_id, $meta_key, $value ) {
+		unset( $meta_id, $value );
+		if ( '_lunara_imdb_title_id' === $meta_key ) {
+			self::queue_review( $review_id );
+		}
+	}
+
 	/**
 	 * Queue identity hydration after an importer has finished writing metadata.
 	 *
@@ -659,6 +706,9 @@ final class Lunara_Review_Image_Studio {
 				'conflicts' => array(),
 			);
 		}
+		if ( $imdb_id !== self::normalize_imdb_id( get_post_meta( $review_id, '_lunara_imdb_title_id', true ) ) ) {
+			return array( 'review_id' => $review_id, 'imdb_id' => $imdb_id, 'status' => 'stale_identity', 'conflicts' => array() );
+		}
 
 		$report = array(
 			'review_id' => $review_id,
@@ -671,6 +721,7 @@ final class Lunara_Review_Image_Studio {
 
 		update_post_meta( $review_id, self::HYDRATE_STATUS, 'running' );
 		update_post_meta( $review_id, self::HYDRATE_TIME, time() );
+		update_post_meta( $review_id, self::PROVIDER_ISSUE, '' );
 
 		try {
 			if ( class_exists( 'Lunara_Core' ) && method_exists( 'Lunara_Core', 'load_movie_importer' ) ) {
@@ -692,6 +743,10 @@ final class Lunara_Review_Image_Studio {
 				if ( ! is_wp_error( $response ) ) {
 					$candidate = isset( $response['candidate'] ) && is_array( $response['candidate'] ) ? $response['candidate'] : $response;
 					$provider_succeeded = is_array( $candidate ) && ! empty( $candidate );
+				} else {
+					// Store only our fixed, redacted explanation, never provider payloads.
+					$report['provider_issue'] = self::provider_issue_message( $response );
+					update_post_meta( $review_id, self::PROVIDER_ISSUE, $report['provider_issue'] );
 				}
 			}
 
@@ -800,6 +855,21 @@ final class Lunara_Review_Image_Studio {
 			$report['error']  = sanitize_text_field( $error->getMessage() );
 			return $report;
 		}
+	}
+
+	/** Translate a provider failure without retaining its message, URL or secrets. */
+	private static function provider_issue_message( $error ) {
+		$messages = array(
+			'lunara_movie_provider_credentials_missing' => __( 'Movie provider credentials are incomplete.', 'lunara-core' ),
+			'lunara_movie_provider_not_found' => __( 'No exact IMDb match was returned.', 'lunara-core' ),
+			'lunara_movie_provider_identity_mismatch' => __( 'The returned film identity did not match; artwork was not imported.', 'lunara-core' ),
+			'lunara_movie_provider_rate_limited' => __( 'The provider rate limit was reached. Retry after the cooldown.', 'lunara-core' ),
+			'lunara_movie_provider_circuit_open' => __( 'The provider is temporarily paused after failed requests. Retry after the cooldown.', 'lunara-core' ),
+		);
+		$data = $error->get_error_data();
+		$provider = is_array( $data ) && isset( $data['provider'] ) && in_array( $data['provider'], array( 'omdb', 'tmdb' ), true )
+			? strtoupper( $data['provider'] ) . ': ' : '';
+		return $provider . ( $messages[ $error->get_error_code() ] ?? __( 'The movie provider lookup failed. Check the provider connection before retrying.', 'lunara-core' ) );
 	}
 
 	/**
