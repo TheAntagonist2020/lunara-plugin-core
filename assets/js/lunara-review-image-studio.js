@@ -14,9 +14,9 @@
 		var status = studio.find( '.lunara-image-studio-retry-status' );
 		button.prop( 'disabled', true );
 		status.text( config.retryPending );
-		$.post( config.ajaxUrl, { action: config.retryAction, review_id: studio.attr( 'data-review-id' ), nonce: button.attr( 'data-nonce' ) } )
+		$.post( config.ajaxUrl, { action: config.retryAction, review_id: studio.attr( 'data-review-id' ), nonce: button.attr( 'data-nonce' ), run_now: '1' } )
 			.done( function ( response ) {
-				status.text( response && response.success ? config.retryQueued : config.retryFailed );
+				status.text( response && response.data && response.data.message ? response.data.message : config.retryFailed );
 			} ).fail( function () { status.text( config.retryFailed ); } )
 			.always( function () { button.prop( 'disabled', false ); } );
 	} );

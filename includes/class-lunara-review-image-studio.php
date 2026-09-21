@@ -51,6 +51,7 @@ final class Lunara_Review_Image_Studio {
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 		add_action( 'admin_post_' . self::IMPORT_ACTION, array( __CLASS__, 'handle_import' ) );
 		add_action( 'wp_ajax_' . self::RETRY_ACTION, array( __CLASS__, 'handle_retry' ) );
+		add_filter( 'post_row_actions', array( __CLASS__, 'artwork_row_action' ), 10, 2 );
 		add_action( 'admin_notices', array( __CLASS__, 'render_notice' ) );
 	}
 
@@ -392,8 +393,8 @@ final class Lunara_Review_Image_Studio {
 			'running' => __( 'Matching the title and importing available artwork now.', 'lunara-core' ),
 			'ready'   => __( 'Dossier, poster, and backdrop are ready.', 'lunara-core' ),
 			'partial' => __( 'The title is linked; use Custom for any artwork the movie database could not supply.', 'lunara-core' ),
-			'identity_only' => __( 'The draft Dossier is linked, but the movie database did not return artwork. Use Retry movie artwork to try again.', 'lunara-core' ),
-			'error'   => __( 'The last lookup could not finish. Use Retry movie artwork to try again.', 'lunara-core' ),
+			'identity_only' => __( 'The draft Dossier is linked, but the movie database did not return artwork. Use Fetch movie artwork now to try again.', 'lunara-core' ),
+			'error'   => __( 'The last lookup could not finish. Use Fetch movie artwork now to try again.', 'lunara-core' ),
 		);
 		?>
 		<div class="lunara-image-studio" data-review-id="<?php echo esc_attr( $post->ID ); ?>">
@@ -417,7 +418,7 @@ final class Lunara_Review_Image_Studio {
 			<?php endif; ?>
 
 			<?php if ( '' !== self::normalize_imdb_id( get_post_meta( $post->ID, '_lunara_imdb_title_id', true ) ) ) : ?>
-				<p><button type="button" class="button lunara-image-studio-retry" data-nonce="<?php echo esc_attr( wp_create_nonce( self::RETRY_ACTION . ':' . $post->ID ) ); ?>"><?php esc_html_e( 'Retry movie artwork', 'lunara-core' ); ?></button> <span class="lunara-image-studio-retry-status" role="status" aria-live="polite"></span></p>
+				<p><button type="button" class="button lunara-image-studio-retry" data-nonce="<?php echo esc_attr( wp_create_nonce( self::RETRY_ACTION . ':' . $post->ID ) ); ?>"><?php esc_html_e( 'Fetch movie artwork now', 'lunara-core' ); ?></button> <span class="lunara-image-studio-retry-status" role="status" aria-live="polite"></span></p>
 				<p class="description"><?php esc_html_e( 'Uses the saved IMDb ID. Your article and custom image choices stay as they are.', 'lunara-core' ); ?></p>
 			<?php endif; ?>
 			<div class="lunara-image-studio-grid">
@@ -573,9 +574,9 @@ final class Lunara_Review_Image_Studio {
 				'empty'  => __( 'No image selected', 'lunara-core' ),
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'retryAction' => self::RETRY_ACTION,
-				'retryPending' => __( 'Queueing artwork lookup…', 'lunara-core' ),
+				'retryPending' => __( 'Retrieving artwork…', 'lunara-core' ),
 				'retryQueued' => __( 'Artwork lookup queued. Reopen this Review shortly to see the result.', 'lunara-core' ),
-				'retryFailed' => __( 'Artwork lookup could not be queued. Please try again.', 'lunara-core' ),
+				'retryFailed' => __( 'Artwork lookup did not complete. Reopen the Review to check its status before retrying.', 'lunara-core' ),
 			)
 		);
 	}
@@ -626,12 +627,39 @@ final class Lunara_Review_Image_Studio {
 		self::redirect_after_import( $review_id, 'success' );
 	}
 
+	/** Open artwork directly from the Review list. */
+	public static function artwork_row_action( $actions, $post ) {
+		if ( 'review' === $post->post_type && current_user_can( 'edit_post', $post->ID ) ) {
+			$actions['lunara_artwork'] = '<a href="' . esc_url( get_edit_post_link( $post->ID, 'raw' ) . '#lunara-artwork' ) . '">' . esc_html__( 'Artwork', 'lunara-core' ) . '</a>';
+		}
+		return $actions;
+	}
+
 	/** Queue one saved Review without submitting its article editor. */
 	public static function handle_retry() {
 		$review_id = isset( $_POST['review_id'] ) && is_scalar( $_POST['review_id'] ) ? absint( $_POST['review_id'] ) : 0;
 		$nonce = isset( $_POST['nonce'] ) && is_string( $_POST['nonce'] ) ? sanitize_text_field( wp_unslash( $_POST['nonce'] ) ) : '';
 		if ( ! $review_id || 'review' !== get_post_type( $review_id ) || ! current_user_can( 'edit_post', $review_id ) || ! wp_verify_nonce( $nonce, self::RETRY_ACTION . ':' . $review_id ) ) {
 			wp_send_json_error( array( 'message' => __( 'This artwork request is not authorized.', 'lunara-core' ) ), 403 );
+			return;
+		}
+		if ( isset( $_POST['run_now'] ) && is_scalar( $_POST['run_now'] ) && '1' === (string) $_POST['run_now'] ) {
+			$imdb_id = self::normalize_imdb_id( get_post_meta( $review_id, '_lunara_imdb_title_id', true ) );
+			if ( '' === $imdb_id ) {
+				wp_send_json_error( array( 'message' => __( 'Save a valid IMDb title ID before fetching artwork.', 'lunara-core' ) ), 400 );
+				return;
+			}
+			if ( 'running' === get_post_meta( $review_id, self::HYDRATE_STATUS, true ) && time() - (int) get_post_meta( $review_id, self::HYDRATE_TIME, true ) < 300 ) {
+				wp_send_json_error( array( 'message' => __( 'Artwork is already being retrieved. Reopen this Review shortly.', 'lunara-core' ) ), 409 );
+				return;
+			}
+			wp_clear_scheduled_hook( self::HYDRATE_HOOK, array( $review_id, $imdb_id ) );
+			$report = self::hydrate_review_identity( $review_id, $imdb_id );
+			if ( ! empty( $report['provider_issue'] ) || ! in_array( $report['status'], array( 'ready', 'partial' ), true ) ) {
+				wp_send_json_error( array( 'message' => ! empty( $report['provider_issue'] ) ? $report['provider_issue'] : __( 'Artwork could not be retrieved. Check the saved IMDb ID and API settings.', 'lunara-core' ) ) );
+				return;
+			}
+			wp_send_json_success( array( 'message' => 'ready' === $report['status'] ? __( 'Poster and backdrop are ready. Reopen the Review to see them; save any pending article edits first.', 'lunara-core' ) : __( 'Available artwork retrieved. Some images are unavailable; reopen the Review after saving any pending edits.', 'lunara-core' ) ) );
 			return;
 		}
 		if ( ! self::queue_review( $review_id, true ) ) {
