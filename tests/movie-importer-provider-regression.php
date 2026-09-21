@@ -312,4 +312,34 @@ foreach ( array( 'tt0111161', '' ) as $wrong_identity ) {
 }
 putenv( 'LUNARA_TMDB_API_TOKEN' );
 
+// Existing Academy settings must work without duplicating secrets in Core.
+$GLOBALS['provider_options'] = array( 'aat_tmdb_api_key' => 'shared-tmdb-test-secret', 'aat_omdb_api_key' => 'shared-omdb-test-secret' );
+function get_option( $key, $default = false ) { return $GLOBALS['provider_options'][ $key ] ?? $default; }
+$shared_calls = array();
+$shared_gateway = new Lunara_Movie_Provider_Gateway( static function ( $url, $args ) use ( $transport, &$shared_calls ) {
+    $shared_calls[] = $url;
+    parse_str( parse_url( $url, PHP_URL_QUERY ) ?? '', $query );
+    if ( 'api.themoviedb.org' === parse_url( $url, PHP_URL_HOST ) ) {
+        lunara_provider_assert_same( 'shared-tmdb-test-secret', $query['api_key'] ?? '', 'TMDB must use its v3 query credential.' );
+        lunara_provider_assert_true( ! isset( $args['headers']['Authorization'] ), 'A v3 key must not be sent as a Bearer token.' );
+    } else {
+        lunara_provider_assert_same( 'shared-omdb-test-secret', $query['apikey'] ?? '', 'OMDb must reuse its existing credential.' );
+    }
+    return $transport( $url, $args );
+}, static function () { return false; }, static function ( $key, $value ) {
+    lunara_provider_assert_true( ! str_contains( json_encode( $value ), 'test-secret' ), 'Shared credentials must not enter caches.' );
+}, static function () { return 8000.0; } );
+lunara_provider_assert_same( array( 'omdb' => true, 'tmdb' => true, 'ready' => true ), $shared_gateway->credentials_status(), 'Existing settings must configure both providers.' );
+lunara_provider_assert_true( is_array( $shared_gateway->get_candidate_by_imdb( 'tt15239678' ) ), 'Full metadata must work with shared settings.' );
+$shared_art = new Lunara_Movie_Provider_Gateway( $transport, static function () { return false; }, static function () {} );
+lunara_provider_assert_true( is_array( $shared_art->get_artwork_by_imdb( 'tt15239678' ) ), 'Artwork must work with the shared TMDB key.' );
+putenv( 'LUNARA_TMDB_API_TOKEN=preferred-token' );
+$preferred = new Lunara_Movie_Provider_Gateway( static function ( $url, $args ) use ( $transport ) {
+    lunara_provider_assert_true( ! str_contains( $url, 'api_key=' ), 'Bearer authentication must take precedence over shared keys.' );
+    lunara_provider_assert_same( 'Bearer preferred-token', $args['headers']['Authorization'] ?? '', 'Use the configured Core token.' );
+    return $transport( $url, $args );
+}, static function () { return false; }, static function () {} );
+lunara_provider_assert_true( is_array( $preferred->get_artwork_by_imdb( 'tt15239678' ) ), 'Explicit Core authentication must remain supported.' );
+putenv( 'LUNARA_TMDB_API_TOKEN' );
+
 echo "Movie importer provider regression checks passed.\n";

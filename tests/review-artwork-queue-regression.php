@@ -6,6 +6,7 @@ $GLOBALS['artwork_queue'] = array( 'hooks' => array(), 'meta' => array(), 'event
 function add_action( $hook, $callback, $priority = 10, $accepted_args = 1 ) {
     $GLOBALS['artwork_queue']['hooks'][ $hook ][] = array( $callback, $accepted_args );
 }
+function add_filter( $hook, $callback, $priority = 10, $accepted_args = 1 ) { add_action( $hook, $callback, $priority, $accepted_args ); }
 function is_admin() { return true; }
 function __( $text, $domain = '' ) { return $text; }
 function sanitize_text_field( $text ) { return trim( $text ); }
@@ -76,3 +77,17 @@ $GLOBALS['artwork_queue']['meta'][13] = array( '_lunara_imdb_title_id' => 'tt212
 queue_assert( Lunara_Review_Image_Studio::queue_review( 13, true ) && $count === count( $GLOBALS['artwork_queue']['events'] ), 'A running worker must not be restarted by a click.' );
 queue_assert( isset( $GLOBALS['artwork_queue']['hooks']['wp_ajax_' . Lunara_Review_Image_Studio::RETRY_ACTION] ), 'Authenticated artwork retry handler must be registered.' );
 echo "Review artwork queue regression checks passed.\n";
+
+// Immediate requests retain the same capability, nonce and active-job guards.
+$_POST = array( 'review_id' => 12, 'nonce' => 'invalid', 'run_now' => '1' );
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 403 ) === $GLOBALS['artwork_queue']['response'], 'Immediate lookup must reject an invalid nonce.' );
+$_POST['nonce'] = 'nonce:' . Lunara_Review_Image_Studio::RETRY_ACTION . ':12';
+$GLOBALS['artwork_queue']['deny'] = true;
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 403 ) === $GLOBALS['artwork_queue']['response'], 'Immediate lookup must enforce edit permissions.' );
+$GLOBALS['artwork_queue']['deny'] = false;
+$GLOBALS['artwork_queue']['meta'][12][ Lunara_Review_Image_Studio::HYDRATE_STATUS ] = 'running';
+$GLOBALS['artwork_queue']['meta'][12][ Lunara_Review_Image_Studio::HYDRATE_TIME ] = time();
+Lunara_Review_Image_Studio::handle_retry();
+queue_assert( array( false, 409 ) === $GLOBALS['artwork_queue']['response'], 'Immediate lookup must not duplicate active work.' );

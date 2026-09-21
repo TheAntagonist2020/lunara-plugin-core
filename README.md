@@ -14,9 +14,9 @@ Review artwork uses a direct TMDB lookup by the saved canonical IMDb ID and
 requires an exact identity match before saving `_lunara_tmdb_poster_url` and
 `_lunara_tmdb_backdrop_url`. OMDb enrichment remains part of the full Movie
 importer, but an OMDb outage no longer blocks artwork. The artwork cache is
-separate from full metadata candidates. Review Image Studio offers **Retry
-movie artwork**, which queues one saved Review without submitting the article
-editor. Automatic retries keep their cooldown; explicit retries deduplicate
+separate from full metadata candidates. Review Image Studio offers **Fetch movie artwork now**, which retrieves one saved Review immediately
+without submitting the article editor. The Review list also has an **Artwork**
+shortcut opening the Images tab directly. Automatic retries keep their cooldown; explicit retries deduplicate
 active work. Custom artwork remains protected.
 
 - `Review Spoiler Mode` marks a Review as either spoiler-free or a full-spoiler companion.
@@ -55,12 +55,18 @@ both current and legacy IMDb identity keys before contacting a provider.
 Published and otherwise non-draft local matches stop the remote workflow. One
 existing draft can be explicitly enriched without creating a second Movie.
 
-Remote lookup requires server-side configuration through exact constants or
-environment variables. Credential values must never be stored in WordPress
-options, entered into an editor form, or committed to this repository:
+Remote lookup prefers server-side configuration through exact constants or
+environment variables. Core 0.8.12 also reuses the existing Academy Awards
+TMDB and OMDb settings when Core-specific configuration is absent. No keys are
+copied into Core options, editor forms, responses, or caches:
 
 - `LUNARA_OMDB_API_KEY`
-- `LUNARA_TMDB_API_TOKEN`
+- `LUNARA_TMDB_API_TOKEN` (Bearer token, preferred)
+- `LUNARA_TMDB_API_KEY` (v3 key); falls back to `AAT_TMDB_API_KEY` / `aat_tmdb_api_key`
+- OMDb falls back to `AAT_OMDB_API_KEY` / `aat_omdb_api_key`
+
+TMDB v3 keys authenticate only to the allowlisted TMDB host. Artwork retrieval
+works independently of OMDb; the full Movie importer uses both services.
 
 The lookup step performs zero content writes. An administrator must explicitly
 confirm the candidate before Core creates or fills a draft Film Dossier. The

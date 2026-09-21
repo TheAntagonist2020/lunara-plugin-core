@@ -74,7 +74,7 @@ final class Lunara_Movie_Provider_Gateway {
      */
     public function credentials_status() {
         $omdb = '' !== self::credential( 'LUNARA_OMDB_API_KEY' );
-        $tmdb = '' !== self::credential( 'LUNARA_TMDB_API_TOKEN' );
+        $tmdb = '' !== self::credential( 'LUNARA_TMDB_API_TOKEN' ) || '' !== self::credential( 'LUNARA_TMDB_API_KEY' );
 
         return array(
             'omdb'  => $omdb,
@@ -227,7 +227,7 @@ final class Lunara_Movie_Provider_Gateway {
         }
 
         $tmdb_token = self::credential( 'LUNARA_TMDB_API_TOKEN' );
-        if ( '' === $tmdb_token ) {
+        if ( '' === $tmdb_token && '' === self::credential( 'LUNARA_TMDB_API_KEY' ) ) {
             return self::error( 'lunara_movie_provider_credentials_missing', 'The movie artwork provider is not configured.', 'tmdb' );
         }
         $tmdb_args = self::request_args( array( 'Authorization' => 'Bearer ' . $tmdb_token ) );
@@ -324,6 +324,20 @@ final class Lunara_Movie_Provider_Gateway {
         if ( ! self::is_allowed_url( $provider, $url ) ) {
             $this->record_failure( $provider );
             return self::error( 'lunara_movie_provider_url_rejected', 'The metadata provider request was rejected.', $provider );
+        }
+
+        // Authenticate only after the provider host has passed the allowlist.
+        if ( 'tmdb' === $provider ) {
+            $token = self::credential( 'LUNARA_TMDB_API_TOKEN' );
+            if ( '' !== $token ) {
+                $args['headers']['Authorization'] = 'Bearer ' . $token;
+            } else {
+                unset( $args['headers']['Authorization'] );
+                $key = self::credential( 'LUNARA_TMDB_API_KEY' );
+                if ( '' !== $key ) {
+                    $url .= ( false === strpos( $url, '?' ) ? '?' : '&' ) . 'api_key=' . rawurlencode( $key );
+                }
+            }
         }
 
         $this->record_request( $provider );
@@ -570,7 +584,7 @@ final class Lunara_Movie_Provider_Gateway {
     }
 
     /**
-     * Resolve a credential from the exact constant or environment variable.
+     * Resolve server configuration, then reuse existing Academy provider settings.
      * Credential values are intentionally kept local to the calling method.
      *
      * @param string $name Exact configuration name.
@@ -578,6 +592,19 @@ final class Lunara_Movie_Provider_Gateway {
      */
     private static function credential( $name ) {
         $value = defined( $name ) ? constant( $name ) : getenv( $name );
+        if ( false === $value || null === $value || '' === $value ) {
+            $shared = array(
+                'LUNARA_TMDB_API_KEY' => array( 'AAT_TMDB_API_KEY', 'aat_tmdb_api_key' ),
+                'LUNARA_OMDB_API_KEY' => array( 'AAT_OMDB_API_KEY', 'aat_omdb_api_key' ),
+            );
+            if ( isset( $shared[ $name ] ) ) {
+                list( $constant, $option ) = $shared[ $name ];
+                $value = defined( $constant ) ? constant( $constant ) : getenv( $constant );
+                if ( ( false === $value || null === $value || '' === $value ) && function_exists( 'get_option' ) ) {
+                    $value = get_option( $option, '' );
+                }
+            }
+        }
         if ( ! is_scalar( $value ) ) {
             return '';
         }

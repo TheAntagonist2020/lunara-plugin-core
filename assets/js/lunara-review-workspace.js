@@ -153,6 +153,9 @@
 	} catch ( error ) {
 		requested = '';
 	}
+	if ( window.location.hash === '#lunara-artwork' ) {
+		requested = 'images';
+	}
 	if ( ! panels[ requested ] ) {
 		requested = availableTabs[ 0 ].getAttribute( 'data-lunara-review-tab' );
 	}
