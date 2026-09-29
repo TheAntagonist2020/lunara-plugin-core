@@ -15,7 +15,7 @@ function lunara_artwork_backfill_assert( $condition, $message ) {
 	}
 }
 
-lunara_artwork_backfill_assert( false !== strpos( $bootstrap, 'Version: 0.8.12' ), 'Core must identify the review poster source release.' );
+lunara_artwork_backfill_assert( false !== strpos( $bootstrap, 'Version: 0.8.13' ), 'Core must identify the review poster source release.' );
 lunara_artwork_backfill_assert( false !== strpos( $bootstrap, 'class-lunara-review-artwork-backfill.php' ), 'Core must load the artwork backfill worker.' );
 lunara_artwork_backfill_assert( false !== strpos( $bootstrap, 'Lunara_Review_Artwork_Backfill::init()' ), 'Core must initialize the artwork backfill worker.' );
 lunara_artwork_backfill_assert( false !== strpos( $backfill, "'edit.php?post_type=review'" ), 'Artwork Audit must live beneath the singular Review menu.' );

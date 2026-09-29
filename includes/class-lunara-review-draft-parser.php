@@ -355,7 +355,7 @@ final class Lunara_Review_Draft_Parser {
             }
             if ( 0 === $strongs->length ) {
                 $plain_item = self::plain_text( $item->textContent );
-                if ( preg_match( '/^(Score|Where\s+to\s+Watch|Theme\s+Echo|Counter[- ]Program|Career\s+Context)\s*:\s*(.+)$/iu', $plain_item, $plain_match ) ) {
+                if ( preg_match( '/^(Score|Where\s+to\s+Watch|Theme\s+Echo|Counter[- ]Program|Career\s+Context|Echo|Counter|Context)\s*:\s*(.+)$/iu', $plain_item, $plain_match ) ) {
                     $label = $plain_match[1];
                     $value = $plain_match[2];
                 } else {
@@ -375,12 +375,15 @@ final class Lunara_Review_Draft_Parser {
                     $result['where_to_watch'] = $value;
                     break;
                 case 'theme_echo':
+                case 'echo': // One-word name since theme 3.2.96.
                     self::set_pairing( 'theme_echo', $value, $result );
                     break;
                 case 'counter_program':
+                case 'counter':
                     self::set_pairing( 'counter_program', $value, $result );
                     break;
                 case 'career_context':
+                case 'context':
                     self::set_pairing( 'career_context', $value, $result );
                     break;
             }

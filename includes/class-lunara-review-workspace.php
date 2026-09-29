@@ -45,7 +45,7 @@ final class Lunara_Review_Workspace {
 			),
 			'debrief' => array(
 				'label'       => __( 'Debrief', 'lunara-core' ),
-				'description' => __( 'Curate Theme Echo, Counter-Program, and Career Context.', 'lunara-core' ),
+				'description' => __( 'Curate the Echo, Counter, and Context.', 'lunara-core' ),
 			),
 			'images'   => array(
 				'label'       => __( 'Images', 'lunara-core' ),

@@ -3,7 +3,7 @@
  * Plugin Name: Lunara Core
  * Plugin URI: https://lunarafilm.com
  * Description: Core content models and editorial tools for Lunara Film.
- * Version: 0.8.12
+ * Version: 0.8.13
  * Author: Lunara Film (Dalton Johnson)
  * Author URI: https://lunarafilm.com
  * License: GPL v2 or later
@@ -15,7 +15,7 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-define( 'LUNARA_CORE_VERSION', '0.8.12' );
+define( 'LUNARA_CORE_VERSION', '0.8.13' );
 define( 'LUNARA_CORE_FILE', __FILE__ );
 define( 'LUNARA_CORE_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LUNARA_CORE_URL', plugin_dir_url( __FILE__ ) );
@@ -479,19 +479,19 @@ final class Lunara_Core {
             <h4><?php esc_html_e( 'PAIR IT WITH', 'lunara-core' ); ?></h4>
 
             <div class="lunara-meta-field">
-                <label for="lunara_theme_echo"><?php esc_html_e( 'Theme Echo', 'lunara-core' ); ?></label>
+                <label for="lunara_theme_echo"><?php esc_html_e( 'Echo', 'lunara-core' ); ?></label>
                 <input type="text" id="lunara_theme_echo" name="lunara_theme_echo" value="<?php echo esc_attr( $theme_echo ); ?>" placeholder="Film that shares thematic DNA">
                 <p class="description"><?php esc_html_e( 'Optionally append a tt-id or IMDb URL for direct links.', 'lunara-core' ); ?></p>
             </div>
 
             <div class="lunara-meta-field">
-                <label for="lunara_counter_program"><?php esc_html_e( 'Counter-Program', 'lunara-core' ); ?></label>
+                <label for="lunara_counter_program"><?php esc_html_e( 'Counter', 'lunara-core' ); ?></label>
                 <input type="text" id="lunara_counter_program" name="lunara_counter_program" value="<?php echo esc_attr( $counter ); ?>" placeholder="Film that offers opposing perspective">
                 <p class="description"><?php esc_html_e( 'Optionally append a tt-id or IMDb URL for direct links.', 'lunara-core' ); ?></p>
             </div>
 
             <div class="lunara-meta-field">
-                <label for="lunara_career_context"><?php esc_html_e( 'Career Context (Optional)', 'lunara-core' ); ?></label>
+                <label for="lunara_career_context"><?php esc_html_e( 'Context (Optional)', 'lunara-core' ); ?></label>
                 <input type="text" id="lunara_career_context" name="lunara_career_context" value="<?php echo esc_attr( $craft ); ?>" placeholder="Film that clarifies this artist's career or creative trajectory">
                 <p class="description"><?php esc_html_e( 'Optionally append a tt-id or IMDb URL for direct links.', 'lunara-core' ); ?></p>
             </div>
@@ -501,9 +501,9 @@ final class Lunara_Core {
                 echo lunara_render_pair_it_with_admin_preview(
                     $post->ID,
                     array(
-                        __( 'Theme Echo', 'lunara-core' )      => $theme_echo,
-                        __( 'Counter-Program', 'lunara-core' ) => $counter,
-                        __( 'Career Context', 'lunara-core' )  => $craft,
+                        __( 'Echo', 'lunara-core' )    => $theme_echo,
+                        __( 'Counter', 'lunara-core' ) => $counter,
+                        __( 'Context', 'lunara-core' ) => $craft,
                     )
                 );
             }

@@ -57,7 +57,7 @@ final class Lunara_Review_Draft_Import_Admin {
             </p>
             <div class="lunara-review-live-harvest" data-lunara-review-live-harvest data-state="watching" role="status" aria-live="polite" aria-atomic="true">
                 <strong><?php esc_html_e( 'Live Debrief detection is on.', 'lunara-core' ); ?></strong>
-                <span data-lunara-review-live-harvest-message><?php esc_html_e( 'Paste the Review into the editor once; Theme Echo, Counter-Program, and Career Context will be read from its LUNARA DEBRIEF section.', 'lunara-core' ); ?></span>
+                <span data-lunara-review-live-harvest-message><?php esc_html_e( 'Paste the Review into the editor once; the Echo, Counter, and Context will be read from its LUNARA DEBRIEF section.', 'lunara-core' ); ?></span>
             </div>
 
             <?php if ( 'save_first' === $importability['reason'] ) : ?>
