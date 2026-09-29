@@ -38,7 +38,7 @@ final class Lunara_Debrief_Contract {
     public static function roles() {
         return array(
             self::ROLE_THEME_ECHO => array(
-                'label'            => __( 'Theme Echo', 'lunara-core' ),
+                'label'            => __( 'Echo', 'lunara-core' ),
                 'movie_field'      => 'theme_echo_movie',
                 'movie_field_key'  => 'field_lunara_review_theme_echo_movie',
                 'reason_field'     => 'theme_echo_note',
@@ -46,7 +46,7 @@ final class Lunara_Debrief_Contract {
                 'legacy_meta_keys' => array( '_lunara_theme_echo' ),
             ),
             self::ROLE_COUNTER_PROGRAM => array(
-                'label'            => __( 'Counter-Program', 'lunara-core' ),
+                'label'            => __( 'Counter', 'lunara-core' ),
                 'movie_field'      => 'counter_program_movie',
                 'movie_field_key'  => 'field_lunara_review_counter_program_movie',
                 'reason_field'     => 'counter_program_note',
@@ -54,7 +54,7 @@ final class Lunara_Debrief_Contract {
                 'legacy_meta_keys' => array( '_lunara_counter_program' ),
             ),
             self::ROLE_CAREER_CONTEXT => array(
-                'label'            => __( 'Career Context', 'lunara-core' ),
+                'label'            => __( 'Context', 'lunara-core' ),
                 'movie_field'      => 'career_context_movie',
                 'movie_field_key'  => 'field_lunara_review_career_context_movie',
                 'reason_field'     => 'career_context_note',

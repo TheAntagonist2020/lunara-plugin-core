@@ -75,6 +75,18 @@ lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'LUNARA 
 lunara_review_parser_assert_true( false === strpos( $parsed['content'], 'Echo Film' ), 'Debrief pairings must not duplicate into article content.' );
 lunara_review_parser_assert_same( $parsed, Lunara_Review_Draft_Parser::parse( $fixture ), 'Repeated parsing must be byte-for-byte deterministic.' );
 
+// Theme 3.2.96 renamed the moves to Echo, Counter and Context. Both vocabularies import.
+$one_word_fixture = str_replace(
+	array( '<strong>Theme Echo:</strong>', '<strong>Counter-Program:</strong>', '<strong>Career Context:</strong>' ),
+	array( '<strong>Echo:</strong>', '<strong>Counter:</strong>', '<strong>Context:</strong>' ),
+	$fixture
+);
+lunara_review_parser_assert_true( $one_word_fixture !== $fixture, 'The one-word fixture must differ from the original.' );
+$one_word_parsed = Lunara_Review_Draft_Parser::parse( $one_word_fixture );
+lunara_review_parser_assert_same( $parsed['pairings'], $one_word_parsed['pairings'], 'Echo, Counter and Context headings must parse exactly like the old headings.' );
+$plain_one_word = Lunara_Review_Draft_Parser::parse( str_replace( array( '<strong>Echo:</strong>', '<strong>Counter:</strong>', '<strong>Context:</strong>' ), array( 'Echo:', 'Counter:', 'Context:' ), $one_word_fixture ) );
+lunara_review_parser_assert_same( $parsed['pairings'], $plain_one_word['pairings'], 'Unbolded one-word headings must parse too.' );
+
 $metadata_identity_fixture = str_replace(
     '<!-- Test Film (2024) -- tt1234567 -->',
     '<!-- LUNARA FINAL: Test Film (Director, 2024) -->',

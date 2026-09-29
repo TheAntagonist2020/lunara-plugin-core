@@ -3,9 +3,9 @@
 
     var config = window.LunaraReviewDraftImport || {};
     var roleLabels = {
-        theme_echo: 'Theme Echo',
-        counter_program: 'Counter-Program',
-        career_context: 'Career Context'
+        theme_echo: 'Echo',
+        counter_program: 'Counter',
+        career_context: 'Context'
     };
 
     function text(value) {
@@ -857,9 +857,9 @@
             unterminated_metadata_comment: 'The metadata comment was safely closed at the end of the file.',
             missing_excerpt: 'No card excerpt was found; the excerpt will remain empty.',
             unsupported_element_unwrapped: 'Unsupported wrapper markup was removed while preserving its readable text.',
-            duplicate_pairing_theme_echo: 'A duplicate Theme Echo entry was ignored.',
-            duplicate_pairing_counter_program: 'A duplicate Counter-Program entry was ignored.',
-            duplicate_pairing_career_context: 'A duplicate Career Context entry was ignored.',
+            duplicate_pairing_theme_echo: 'A duplicate Echo entry was ignored.',
+            duplicate_pairing_counter_program: 'A duplicate Counter entry was ignored.',
+            duplicate_pairing_career_context: 'A duplicate Context entry was ignored.',
             document_converted_locally: 'The document was converted locally before parsing; no remote service was used.'
         };
         var normalized = text(code);

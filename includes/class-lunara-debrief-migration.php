@@ -830,9 +830,9 @@ final class Lunara_Debrief_Migration {
 
         $labels = array();
         $label_patterns = array(
-            'theme_echo'      => '/Theme\s+Echo\s*:/i',
-            'counter_program' => '/Counter(?:-|\s)Program\s*:/i',
-            'career_context'  => '/(?:Career\s+Context|Craft\s+Mirror)\s*:/i',
+            'theme_echo'      => '/Theme\s+Echo\s*:|(?:^|>)\s*Echo\s*:/im',
+            'counter_program' => '/Counter(?:-|\s)Program\s*:|(?:^|>)\s*Counter\s*:/im',
+            'career_context'  => '/(?:Career\s+Context|Craft\s+Mirror)\s*:|(?:^|>)\s*Context\s*:/im',
         );
         foreach ( $label_patterns as $role => $pattern ) {
             if ( preg_match( $pattern, $content ) ) {

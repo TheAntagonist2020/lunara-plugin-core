@@ -175,7 +175,7 @@ final class Lunara_Entities {
                         'post_type'    => array( 'person' ),
                         'filters'      => array( 'search' ),
                         'return_format' => 'id',
-                        'instructions' => 'Bridges the Career Context slot in reviews and the director index loops.',
+                        'instructions' => 'Bridges the Context slot in reviews and the director index loops.',
                     ),
                     array(
                         'key'          => 'field_lunara_movie_principal_cast',
