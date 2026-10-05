@@ -337,7 +337,13 @@ final class Lunara_Review_Draft_Document {
 
         $document = new DOMDocument( '1.0', 'UTF-8' );
         $previous = libxml_use_internal_errors( true );
-        $loaded   = $document->loadHTML( (string) $html, LIBXML_NONET | LIBXML_COMPACT );
+        $html = (string) $html;
+        // Without a declared charset libxml assumes Latin-1 and turns "It’s 🎬"
+        // into "Itâs ð¬". Declare UTF-8 when the document does not.
+        if ( ! preg_match( '/<meta[^>]+charset/i', substr( $html, 0, 4096 ) ) ) {
+            $html = '<?xml encoding="UTF-8">' . $html;
+        }
+        $loaded   = $document->loadHTML( $html, LIBXML_NONET | LIBXML_COMPACT );
         libxml_clear_errors();
         libxml_use_internal_errors( $previous );
         if ( ! $loaded ) {

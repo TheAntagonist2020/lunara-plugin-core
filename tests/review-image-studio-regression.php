@@ -147,7 +147,7 @@ $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $studio    = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-image-studio.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-image-studio.js' );
 $importer  = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
-lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Version: 0.8.13' ), 'Core must identify the review poster source release.' );
+lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Version: 0.8.14' ), 'Core must identify the review poster source release.' );
 lunara_image_studio_assert_true( false !== strpos( $bootstrap, 'Lunara_Review_Image_Studio::init()' ), 'Core must initialize the Review Image Studio.' );
 lunara_image_studio_assert_true( false !== strpos( $studio, 'media_sideload_image' ), 'Remote provider artwork must be localizable into the Media Library.' );
 lunara_image_studio_assert_true( false !== strpos( $studio, 'set_post_thumbnail' ), 'Review and Film Dossier poster synchronization must remain explicit and supported.' );

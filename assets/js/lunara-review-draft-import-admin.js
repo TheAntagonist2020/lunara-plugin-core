@@ -287,11 +287,36 @@
         return root._lunaraGeneration === generation;
     }
 
+    /**
+     * Decode an uploaded text/HTML file in its real encoding. Word's "Save as Web
+     * Page" writes Windows-1252, and readAsText() assumed UTF-8, turning every
+     * curly quote and dash into "\uFFFD". Order: BOM, <meta charset>, strict
+     * UTF-8, then Windows-1252.
+     */
+    function decodeDocument(buffer) {
+        var bytes = new Uint8Array(buffer);
+        if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+            return new TextDecoder('utf-8').decode(bytes.subarray(3));
+        }
+        var head = new TextDecoder('windows-1252').decode(bytes.subarray(0, 4096));
+        var declared = /<meta[^>]+charset\s*=\s*["']?([\w-]+)/i.exec(head);
+        if (declared && !/^utf-?8$/i.test(declared[1])) {
+            try {
+                return new TextDecoder(declared[1].toLowerCase()).decode(bytes);
+            } catch (unknownLabel) { /* fall through */ }
+        }
+        try {
+            return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (notUtf8) {
+            return new TextDecoder('windows-1252').decode(bytes);
+        }
+    }
+
     function readFile(file) {
         return new Promise(function (resolve, reject) {
             var reader = new window.FileReader();
             reader.addEventListener('load', function () {
-                resolve(text(reader.result));
+                resolve(text(decodeDocument(reader.result)));
             });
             reader.addEventListener('error', function () {
                 reject(new Error('The selected document could not be read.'));
@@ -299,7 +324,7 @@
             reader.addEventListener('abort', function () {
                 reject(new Error('Reading the selected document was cancelled.'));
             });
-            reader.readAsText(file);
+            reader.readAsArrayBuffer(file);
         });
     }
 
