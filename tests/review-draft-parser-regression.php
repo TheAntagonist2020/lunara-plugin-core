@@ -223,4 +223,14 @@ lunara_review_parser_assert_true( false === strpos( $source, 'wp_remote_' ), 'Th
 lunara_review_parser_assert_true( false === strpos( $source, 'wp_insert_post' ), 'The parser must never write WordPress post state.' );
 lunara_review_parser_assert_true( false === strpos( $source, 'update_post_meta' ), 'The parser must never write WordPress metadata.' );
 
+// Encoding: a Word .htm draft carries Windows-1252 bytes (\x92 = ’, \x97 = —).
+// They must parse like the UTF-8 original, keeping real emoji and accents.
+$cp1252 = str_replace( '<p>The opening paragraph', "<p>It\x92s caf\xE9 \x97 the opening paragraph", $fixture );
+$utf8   = str_replace( '<p>The opening paragraph', '<p>It’s café — the opening paragraph 🎬', $fixture );
+$from_cp1252 = Lunara_Review_Draft_Parser::parse( $cp1252 );
+$from_utf8   = Lunara_Review_Draft_Parser::parse( $utf8 );
+lunara_review_parser_assert_same( $from_utf8['errors'], $from_cp1252['errors'], 'Windows-1252 bytes must not cause extra parse errors.' );
+lunara_review_parser_assert_true( false !== strpos( $from_cp1252['content'], 'It’s café — the opening' ), 'Windows-1252 smart quotes, accents and dashes become UTF-8.' );
+lunara_review_parser_assert_true( false !== strpos( $from_utf8['content'], 'It’s café — the opening paragraph 🎬' ), 'Valid UTF-8, emoji included, passes through untouched.' );
+
 echo "Review draft parser regression checks passed.\n";

@@ -8,7 +8,7 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'LUNARA_CORE_DIR', dirname( __DIR__ ) . '/' );
 define( 'LUNARA_CORE_URL', 'https://example.test/wp-content/plugins/lunara-core/' );
-define( 'LUNARA_CORE_VERSION', '0.8.13' );
+define( 'LUNARA_CORE_VERSION', '0.8.14' );
 
 $GLOBALS['lunara_review_import_test'] = array(
     'posts' => array(
@@ -465,7 +465,7 @@ lunara_review_import_assert_same( 'Sony Pictures Classics / Bold Films / Blumhou
 $bootstrap = file_get_contents( dirname( __DIR__ ) . '/lunara-core.php' );
 $admin     = file_get_contents( dirname( __DIR__ ) . '/includes/class-lunara-review-draft-import-admin.php' );
 $script    = file_get_contents( dirname( __DIR__ ) . '/assets/js/lunara-review-draft-import-admin.js' );
-lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.13" ), 'Core must identify the review poster source release.' );
+lunara_review_import_assert_true( false !== strpos( $bootstrap, "Version: 0.8.14" ), 'Core must identify the review poster source release.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, "'revisions'" ), 'Review CPT must retain native WordPress revisions.' );
 lunara_review_import_assert_true( false !== strpos( $bootstrap, '/lunara/v1/review-draft-import/' ), 'Importer REST loading must remain exact-prefix private.' );
 lunara_review_import_assert_true( false === strpos( $admin, 'add_shortcode' ), 'The importer must not create a shortcode dependency.' );

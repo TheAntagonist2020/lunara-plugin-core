@@ -18,6 +18,25 @@ final class Lunara_Review_Draft_Parser {
     const MAX_INPUT_BYTES = 1048576;
 
     /**
+     * Windows-1252 bytes inside a draft (Word .htm, old pastes) used to break every
+     * /u regex, so the parser reported eleven unrelated errors. Convert only the
+     * invalid bytes; valid UTF-8, emoji included, is untouched.
+     */
+    private static function repair_invalid_bytes( $html ) {
+        if ( '' === $html || 1 === preg_match( '//u', $html ) ) {
+            return $html;
+        }
+        $fixed = preg_replace_callback(
+            '/[\xC2-\xDF][\x80-\xBF]|\xE0[\xA0-\xBF][\x80-\xBF]|[\xE1-\xEC\xEE\xEF][\x80-\xBF]{2}|\xED[\x80-\x9F][\x80-\xBF]|\xF0[\x90-\xBF][\x80-\xBF]{2}|[\xF1-\xF3][\x80-\xBF]{3}|\xF4[\x80-\x8F][\x80-\xBF]{2}|([\x80-\xFF])/',
+            static function ( $m ) {
+                return isset( $m[1] ) ? (string) mb_convert_encoding( $m[1], 'UTF-8', 'Windows-1252' ) : $m[0];
+            },
+            $html
+        );
+        return is_string( $fixed ) ? $fixed : $html;
+    }
+
+    /**
      * Parse a Review draft into a safe import preview.
      *
      * @param mixed $html Editorial draft HTML.
@@ -32,6 +51,7 @@ final class Lunara_Review_Draft_Parser {
         }
 
         $html = preg_replace( '/^\xEF\xBB\xBF/', '', $html );
+        $html = self::repair_invalid_bytes( $html );
         $html = str_replace( array( "\r\n", "\r" ), "\n", $html );
 
         if ( '' === trim( $html ) ) {
